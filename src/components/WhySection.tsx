@@ -50,7 +50,12 @@ export default function WhySection() {
 
         <div className="max-w-3xl mx-auto">
           {painPoints.map(({ key, icon: Icon }, index) => (
-            <div key={key} className="flex gap-6 mb-12 last:mb-0 group">
+            <motion.div
+              key={key}
+              ref={painPointCardRefs[index]}
+              {...useMobileCardAnimation(painPointCardRefs[index], index)}
+              className="md:transform-none w-full flex gap-6 mb-12 last:mb-0 group"
+            >
               <div className="flex flex-col items-center gap-2 shrink-0">
                 <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors duration-300">
                   <Icon className="size-6 text-primary" />
@@ -67,7 +72,7 @@ export default function WhySection() {
                   {t(`why.items.${key}.description`)}
                 </p>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
 
