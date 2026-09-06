@@ -230,7 +230,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
             subtitle={<p className="text-muted-foreground max-w-3xl mx-auto">{t('packages.subtitle')}</p>}
           >
             <div className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 text-primary font-medium text-sm">
-              <ClockIcon className="size-4" />
+              <ClockIcon className="size-4 shrink-0" />
               {t('packages.footer')}
             </div>
           </SectionHeading>
