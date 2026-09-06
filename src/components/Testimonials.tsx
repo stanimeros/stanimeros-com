@@ -26,8 +26,8 @@ export default function Testimonials() {
             <ChatBubbleLeftRightIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
             {t("testimonials.title")}
           </h2>
-          <Separator className="w-24 mx-auto mb-4" />
           <p className="text-muted-foreground max-w-2xl mx-auto">{t("testimonials.subtitle")}</p>
+          <Separator className="w-24 mx-auto mt-4" />
         </div>
 
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">

@@ -235,13 +235,3 @@ export function keyToSlug(key: string): string {
 export function getProjectBySlug(slug: string): ProjectItem | undefined {
   return projectItems.find((item) => keyToSlug(item.key) === slug)
 }
-
-/** Returns up to `count` random items from `items`, without repeats. */
-export function sampleRandom<T>(items: readonly T[], count: number): T[] {
-  const shuffled = [...items]
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1))
-    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-  }
-  return shuffled.slice(0, count)
-}

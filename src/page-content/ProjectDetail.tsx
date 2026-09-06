@@ -16,7 +16,7 @@ import {
 } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation } from "@/lib/hooks"
+import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import { getProjectBySlug, projectItems, keyToSlug } from "@/lib/projects-data"
 
 interface ProjectDetailProps {
@@ -33,6 +33,11 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
   const ctaRef = useRef<HTMLElement>(null)
   const relatedAnimation = useScrollAnimation(relatedRef)
   const ctaAnimation = useScrollAnimation(ctaRef)
+
+  // Refs for card animations. Fixed size (3) since `related` below is always
+  // sliced from this many candidates at most — computed before any early
+  // return so hook count never varies across renders.
+  const relatedCardRefs = Array(3).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   useEffect(() => {
     trackEvent("pageView", { page: `projects/${slug}` })
@@ -159,21 +164,27 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
               <Separator className="w-24 mx-auto" />
             </div>
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
-              {related.map((relatedItem) => (
-                <ProjectCard
+              {related.map((relatedItem, index) => (
+                <motion.div
                   key={relatedItem.key}
-                  title={t(`projects.items.${relatedItem.key}.title`)}
-                  description={t(`projects.items.${relatedItem.key}.description`)}
-                  technologies={relatedItem.technologies}
-                  bgColor={relatedItem.bgColor}
-                  textColor={relatedItem.textColor}
-                  bgImage={relatedItem.bgImage}
-                  logo={relatedItem.logo}
-                  logoBg={relatedItem.logoBg}
-                  url={relatedItem.url}
-                  caseStudyHref={`${prefix}/projects/${keyToSlug(relatedItem.key)}`}
-                  storeLinks={relatedItem.storeLinks}
-                />
+                  ref={relatedCardRefs[index]}
+                  {...useMobileCardAnimation(relatedCardRefs[index], index)}
+                  className="md:transform-none w-full"
+                >
+                  <ProjectCard
+                    title={t(`projects.items.${relatedItem.key}.title`)}
+                    description={t(`projects.items.${relatedItem.key}.description`)}
+                    technologies={relatedItem.technologies}
+                    bgColor={relatedItem.bgColor}
+                    textColor={relatedItem.textColor}
+                    bgImage={relatedItem.bgImage}
+                    logo={relatedItem.logo}
+                    logoBg={relatedItem.logoBg}
+                    url={relatedItem.url}
+                    caseStudyHref={`${prefix}/projects/${keyToSlug(relatedItem.key)}`}
+                    storeLinks={relatedItem.storeLinks}
+                  />
+                </motion.div>
               ))}
             </div>
             <div className="text-center mt-10">

@@ -2,7 +2,7 @@ import { useRef } from "react"
 import { motion, type HTMLMotionProps } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Separator } from "@/components/ui/separator"
-import { useScrollAnimation } from "@/lib/hooks"
+import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import UnderlineHighlight from "@/components/UnderlineHighlight"
 import {
   ArrowPathIcon,
@@ -25,6 +25,9 @@ export default function WhySection() {
   const sectionRef = useRef<HTMLElement>(null)
   const animation = useScrollAnimation(sectionRef)
 
+  // Refs for card animations
+  const painPointCardRefs = Array(painPoints.length).fill(null).map(() => useRef<HTMLDivElement>(null))
+
   return (
     <motion.section
       ref={sectionRef}
@@ -41,8 +44,8 @@ export default function WhySection() {
             <HandRaisedIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
             {t('why.title')}
           </h2>
-          <Separator className="w-24 mx-auto mb-4" />
           <p className="text-muted-foreground max-w-2xl mx-auto">{t('why.subtitle')}</p>
+          <Separator className="w-24 mx-auto mt-4" />
         </div>
 
         <div className="max-w-3xl mx-auto">

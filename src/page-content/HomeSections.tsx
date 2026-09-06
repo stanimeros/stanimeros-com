@@ -33,7 +33,7 @@ import Testimonials from "@/components/Testimonials"
 import { ContactChannels } from "@/components/ContactChannels"
 import { trackEvent } from "@/lib/events"
 import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
-import { projectItems, keyToSlug, sampleRandom, type ProjectItem } from "@/lib/projects-data"
+import { projectItems, keyToSlug, type ProjectItem } from "@/lib/projects-data"
 import { FacebookIcon, InstagramIcon, LinkedinIcon, GithubIcon, BriefcaseIcon } from "lucide-react"
 
 interface HomeSectionsProps {
@@ -58,10 +58,10 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
   // Refs for card animations
   const serviceCardRefs = Array(5).fill(null).map(() => useRef<HTMLDivElement>(null))
   const packageCardRefs = Array(3).fill(null).map(() => useRef<HTMLDivElement>(null))
-  // Picked once on mount and never swapped again — this component only hydrates
-  // when scrolled into view (client:visible), so re-randomizing later would remount
-  // already-visible cards mid-scroll and could strand their fade-in animation at opacity 0.
-  const [featuredProjectItems] = useState<ProjectItem[]>(() => sampleRandom(projectItems, 12))
+  // A fixed slice, not a random one: this page is statically prerendered, so
+  // Math.random() here would pick different projects at build time (server)
+  // vs. hydration time (client) and break hydration every load.
+  const featuredProjectItems: ProjectItem[] = projectItems.slice(0, 12)
   const projectCardRefs = Array(featuredProjectItems.length).fill(null).map(() => useRef<HTMLDivElement>(null))
   
   // Get animation props for each section
@@ -241,10 +241,10 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
               <CubeTransparentIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('packages.title')}
             </h2>
-            <Separator className="w-24 mx-auto mb-4" />
             <p className="text-muted-foreground max-w-3xl mx-auto">
               {t('packages.subtitle')}
             </p>
+            <Separator className="w-24 mx-auto mt-4" />
             <div className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 text-primary font-medium text-sm">
               <ClockIcon className="size-4" />
               {t('packages.footer')}
@@ -261,6 +261,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                 badge: 'common.badges.website',
                 features: 'packages.website.features',
                 className: 'border-border/60',
+                icon: GlobeAltIcon,
                 ctaIcon: <GlobeAltIcon className="size-5 mr-2 stroke-[1.5]" />,
               },
               {
@@ -271,6 +272,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                 badge: 'common.badges.development',
                 features: 'packages.eShop.features',
                 className: 'border-primary/30 ring-1 ring-primary/30 bg-primary/5',
+                icon: BuildingStorefrontIcon,
                 ctaIcon: <BuildingStorefrontIcon className="size-5 mr-2 stroke-[1.5]" />,
               },
               {
@@ -281,6 +283,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                 badge: 'common.badges.ai',
                 features: 'packages.onlinePresence.features',
                 className: 'border-border/60',
+                icon: SparklesIcon,
                 ctaIcon: <SparklesIcon className="size-5 mr-2 stroke-[1.5]" />,
               },
             ].map((pkg, index) => (
@@ -293,7 +296,10 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                 <Card className={`relative flex flex-col hover:shadow-lg transition-all duration-300 h-full bg-card/70 hover:bg-card/70 ${pkg.className}`}>
                   <CardHeader className="flex-none">
                     <div className="flex items-center justify-between">
-                      <CardTitle>{t(pkg.title)}</CardTitle>
+                      <div className="flex items-center gap-3">
+                        <pkg.icon className="size-6 text-primary shrink-0" />
+                        <CardTitle>{t(pkg.title)}</CardTitle>
+                      </div>
                       <Badge variant="secondary" className="rounded-full">{t(pkg.badge)}</Badge>
                     </div>
                     <CardDescription>{t(pkg.description)}</CardDescription>
@@ -451,8 +457,8 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
               <BriefcaseIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t("projects.title")}
             </h2>
-            <Separator className="w-24 mx-auto mb-4" />
             <p className="text-muted-foreground max-w-2xl mx-auto">{t("projects.subtitle")}</p>
+            <Separator className="w-24 mx-auto mt-4" />
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
             {featuredProjectItems.map((item, index) => (
@@ -501,10 +507,10 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
               <PhoneIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('contact.title')}
             </h2>
-            <Separator className="w-24 mx-auto mb-4" />
             <p className="text-foreground font-medium max-w-2xl mx-auto">
               {t('contact.description')}
             </p>
+            <Separator className="w-24 mx-auto mt-4" />
           </div>
           <div className="flex flex-col items-center gap-12 max-w-3xl mx-auto">
             <div className="grid md:grid-cols-3 gap-4 w-full">

@@ -2,7 +2,7 @@ import { useRef } from "react"
 import { motion, type HTMLMotionProps } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Separator } from "@/components/ui/separator"
-import { useScrollAnimation } from "@/lib/hooks"
+import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import {
   ListBulletIcon,
   PhoneArrowUpRightIcon,
@@ -23,6 +23,9 @@ export default function ProcessSection() {
   const sectionRef = useRef<HTMLElement>(null)
   const animation = useScrollAnimation(sectionRef)
 
+  // Refs for card animations
+  const stepCardRefs = Array(steps.length).fill(null).map(() => useRef<HTMLDivElement>(null))
+
   return (
     <motion.section
       ref={sectionRef}
@@ -36,13 +39,18 @@ export default function ProcessSection() {
             <ListBulletIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
             {t('process.title')}
           </h2>
-          <Separator className="w-24 mx-auto mb-4" />
           <p className="text-muted-foreground max-w-2xl mx-auto">{t('process.subtitle')}</p>
+          <Separator className="w-24 mx-auto mt-4" />
         </div>
 
         <div className="max-w-3xl mx-auto">
           {steps.map(({ key, icon: Icon }, index) => (
-            <div key={key} className="flex gap-6 mb-12 last:mb-0 group">
+            <motion.div
+              key={key}
+              ref={stepCardRefs[index]}
+              {...useMobileCardAnimation(stepCardRefs[index], index)}
+              className="md:transform-none w-full flex gap-6 mb-12 last:mb-0 group"
+            >
               <div className="flex flex-col items-center gap-2 shrink-0">
                 <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/20 transition-colors duration-300">
                   <Icon className="size-6 text-primary" />
@@ -59,7 +67,7 @@ export default function ProcessSection() {
                   {t(`process.steps.${key}.description`)}
                 </p>
               </div>
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>

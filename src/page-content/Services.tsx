@@ -25,7 +25,7 @@ import {
   QuestionMarkCircleIcon,
 } from "@heroicons/react/24/outline"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation } from "@/lib/hooks"
+import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import { projectItems, keyToSlug } from "@/lib/projects-data"
 
 const items = [
@@ -57,6 +57,7 @@ const packages = [
     badge: 'common.badges.website',
     features: 'packages.website.features',
     className: 'border-border/60',
+    icon: GlobeAltIcon,
     ctaIcon: <GlobeAltIcon className="size-5 mr-2 stroke-[1.5]" />,
   },
   {
@@ -67,6 +68,7 @@ const packages = [
     badge: 'common.badges.development',
     features: 'packages.eShop.features',
     className: 'border-primary/30 ring-1 ring-primary/30 bg-primary/5',
+    icon: BuildingStorefrontIcon,
     ctaIcon: <BuildingStorefrontIcon className="size-5 mr-2 stroke-[1.5]" />,
   },
   {
@@ -77,6 +79,7 @@ const packages = [
     badge: 'common.badges.ai',
     features: 'packages.onlinePresence.features',
     className: 'border-border/60',
+    icon: SparklesIcon,
     ctaIcon: <SparklesIcon className="size-5 mr-2 stroke-[1.5]" />,
   },
 ] as const
@@ -95,6 +98,11 @@ export default function Services({ lang }: ServicesProps) {
   const faqRef = useRef<HTMLElement>(null)
   const projectsRef = useRef<HTMLElement>(null)
   const ctaRef = useRef<HTMLElement>(null)
+
+  // Refs for card animations
+  const itemCardRefs = Array(items.length).fill(null).map(() => useRef<HTMLDivElement>(null))
+  const packageCardRefs = Array(packages.length).fill(null).map(() => useRef<HTMLDivElement>(null))
+  const projectCardRefs = Array(projectItems.length).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   const heroAnimation = useScrollAnimation(heroRef)
   const itemsAnimation = useScrollAnimation(itemsRef)
@@ -120,8 +128,8 @@ export default function Services({ lang }: ServicesProps) {
               <WrenchScrewdriverIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t("servicesPage.title")}
             </h1>
-            <Separator className="w-24 mx-auto mb-4" />
             <p className="text-xl text-muted-foreground">{t("servicesPage.intro")}</p>
+            <Separator className="w-24 mx-auto mt-4" />
           </div>
         </div>
       </motion.section>
@@ -133,23 +141,27 @@ export default function Services({ lang }: ServicesProps) {
         {...(itemsAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
-            {items.map(({ key, icon: Icon }) => (
-              <Card
+            {items.map(({ key, icon: Icon }, index) => (
+              <motion.div
                 key={key}
-                className="hover:shadow-lg transition-all duration-300 hover:-translate-y-2 h-full flex flex-col bg-card/70 hover:bg-card/70"
+                ref={itemCardRefs[index]}
+                {...useMobileCardAnimation(itemCardRefs[index], index)}
+                className="md:transform-none w-full"
               >
-                <CardHeader className="text-center flex-none">
-                  <div className="mx-auto mb-4 text-primary">
-                    <Icon className="size-8" />
-                  </div>
-                  <CardTitle>{t(`servicesPage.items.${key}.title`)}</CardTitle>
-                </CardHeader>
-                <CardContent className="flex-grow">
-                  <CardDescription className="text-center leading-relaxed">
-                    {t(`servicesPage.items.${key}.description`)}
-                  </CardDescription>
-                </CardContent>
-              </Card>
+                <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-2 h-full flex flex-col bg-card/70 hover:bg-card/70">
+                  <CardHeader className="text-center flex-none">
+                    <div className="mx-auto mb-4 text-primary">
+                      <Icon className="size-8" />
+                    </div>
+                    <CardTitle>{t(`servicesPage.items.${key}.title`)}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-grow">
+                    <CardDescription className="text-center leading-relaxed">
+                      {t(`servicesPage.items.${key}.description`)}
+                    </CardDescription>
+                  </CardContent>
+                </Card>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -166,51 +178,58 @@ export default function Services({ lang }: ServicesProps) {
               <CubeTransparentIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('packages.title')}
             </h2>
-            <Separator className="w-24 mx-auto mb-4" />
             <p className="text-muted-foreground max-w-3xl mx-auto">{t('packages.subtitle')}</p>
+            <Separator className="w-24 mx-auto mt-4" />
             <div className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 text-primary font-medium text-sm">
               <ClockIcon className="size-4" />
               {t('packages.footer')}
             </div>
           </div>
           <div className="grid md:grid-cols-3 gap-8 w-full">
-            {packages.map((pkg) => (
-              <Card
+            {packages.map((pkg, index) => (
+              <motion.div
                 key={pkg.title}
-                className={`relative flex flex-col hover:shadow-lg transition-all duration-300 h-full bg-card/70 hover:bg-card/70 ${pkg.className}`}
+                ref={packageCardRefs[index]}
+                {...useMobileCardAnimation(packageCardRefs[index], index)}
+                className="md:transform-none w-full"
               >
-                <CardHeader className="flex-none">
-                  <div className="flex items-center justify-between">
-                    <CardTitle>{t(pkg.title)}</CardTitle>
-                    <Badge variant="secondary" className="rounded-full">{t(pkg.badge)}</Badge>
-                  </div>
-                  <CardDescription>{t(pkg.description)}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex-grow space-y-4">
-                  <div>
-                    <div className="text-lg font-semibold text-primary">{t(pkg.price)}</div>
-                    {pkg.priceNote && (
-                      <div className="text-xs text-muted-foreground">{t(pkg.priceNote)}</div>
-                    )}
-                  </div>
-                  <div className="space-y-2 text-sm text-muted-foreground">
-                    {(t(pkg.features, { returnObjects: true }) as string[]).map((feature, featureIndex) => (
-                      <div key={featureIndex} className="flex items-start gap-2">
-                        <CheckIcon className="size-4 text-primary mt-0.5" />
-                        <span>{feature}</span>
+                <Card className={`relative flex flex-col hover:shadow-lg transition-all duration-300 h-full bg-card/70 hover:bg-card/70 ${pkg.className}`}>
+                  <CardHeader className="flex-none">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <pkg.icon className="size-6 text-primary shrink-0" />
+                        <CardTitle>{t(pkg.title)}</CardTitle>
                       </div>
-                    ))}
+                      <Badge variant="secondary" className="rounded-full">{t(pkg.badge)}</Badge>
+                    </div>
+                    <CardDescription>{t(pkg.description)}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="flex-grow space-y-4">
+                    <div>
+                      <div className="text-lg font-semibold text-primary">{t(pkg.price)}</div>
+                      {pkg.priceNote && (
+                        <div className="text-xs text-muted-foreground">{t(pkg.priceNote)}</div>
+                      )}
+                    </div>
+                    <div className="space-y-2 text-sm text-muted-foreground">
+                      {(t(pkg.features, { returnObjects: true }) as string[]).map((feature, featureIndex) => (
+                        <div key={featureIndex} className="flex items-start gap-2">
+                          <CheckIcon className="size-4 text-primary mt-0.5" />
+                          <span>{feature}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                  <div className="px-6 pb-6 mt-auto">
+                    <Button variant="green" size="lg" className="w-full px-8" asChild>
+                      <a href={`${prefix}/contact?source=services-package`}>
+                        {pkg.ctaIcon}
+                        {t('packages.getStarted')}
+                      </a>
+                    </Button>
                   </div>
-                </CardContent>
-                <div className="px-6 pb-6 mt-auto">
-                  <Button variant="green" size="lg" className="w-full px-8" asChild>
-                    <a href={`${prefix}/contact?source=services-package`}>
-                      {pkg.ctaIcon}
-                      {t('packages.getStarted')}
-                    </a>
-                  </Button>
-                </div>
-              </Card>
+                </Card>
+              </motion.div>
             ))}
           </div>
           <Card className="mt-8 border-border/60 bg-card/70 w-full">
@@ -284,20 +303,26 @@ export default function Services({ lang }: ServicesProps) {
             <Separator className="w-24 mx-auto" />
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
-            {projectItems.map((item) => (
-              <ProjectCard
+            {projectItems.map((item, index) => (
+              <motion.div
                 key={item.key}
-                title={t(`projects.items.${item.key}.title`)}
-                description={t(`projects.items.${item.key}.description`)}
-                technologies={item.technologies}
-                bgColor={item.bgColor}
-                textColor={item.textColor}
-                bgImage={item.bgImage}
-                logo={item.logo}
-                logoBg={item.logoBg}
-                url={item.url}
-                caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
-              />
+                ref={projectCardRefs[index]}
+                {...useMobileCardAnimation(projectCardRefs[index], index)}
+                className="md:transform-none w-full"
+              >
+                <ProjectCard
+                  title={t(`projects.items.${item.key}.title`)}
+                  description={t(`projects.items.${item.key}.description`)}
+                  technologies={item.technologies}
+                  bgColor={item.bgColor}
+                  textColor={item.textColor}
+                  bgImage={item.bgImage}
+                  logo={item.logo}
+                  logoBg={item.logoBg}
+                  url={item.url}
+                  caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
+                />
+              </motion.div>
             ))}
           </div>
           <div className="text-center mt-10">

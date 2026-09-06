@@ -17,7 +17,7 @@ import {
   PhoneIcon,
 } from "@heroicons/react/24/outline"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation } from "@/lib/hooks"
+import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import GitHubCalendarComponent from "@/components/GitHubCalendar"
 import { projectItems, keyToSlug } from "@/lib/projects-data"
 
@@ -53,6 +53,10 @@ export default function About({ lang }: AboutProps) {
   const projectsRef = useRef<HTMLElement>(null)
   const ctaRef = useRef<HTMLElement>(null)
 
+  // Refs for card animations
+  const sectionCardRefs = Array(sections.length).fill(null).map(() => useRef<HTMLDivElement>(null))
+  const exampleCardRefs = Array(examples.length).fill(null).map(() => useRef<HTMLDivElement>(null))
+
   const heroAnimation = useScrollAnimation(heroRef)
   const sectionsAnimation = useScrollAnimation(sectionsRef)
   const githubAnimation = useScrollAnimation(githubRef)
@@ -76,8 +80,8 @@ export default function About({ lang }: AboutProps) {
               <UserIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t("aboutPage.title")}
             </h1>
-            <Separator className="w-24 mx-auto mb-4" />
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t("aboutPage.intro")}</p>
+            <Separator className="w-24 mx-auto mt-4" />
           </div>
 
           <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
@@ -114,21 +118,25 @@ export default function About({ lang }: AboutProps) {
         {...(sectionsAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6 w-full">
-            {sections.map(({ key, icon: Icon }) => (
-              <Card
+            {sections.map(({ key, icon: Icon }, index) => (
+              <motion.div
                 key={key}
-                className="hover:shadow-lg transition-all duration-300 hover:-translate-y-2 h-full flex flex-col bg-card/70 hover:bg-card/70"
+                ref={sectionCardRefs[index]}
+                {...useMobileCardAnimation(sectionCardRefs[index], index)}
+                className="md:transform-none w-full"
               >
-                <CardHeader className="flex-none">
-                  <div className="p-2 rounded-lg bg-primary/10 w-fit mb-2">
-                    <Icon className="size-6 text-primary" />
-                  </div>
-                  <h2 className="text-xl font-semibold">{t(`aboutPage.${key}.title`)}</h2>
-                </CardHeader>
-                <CardContent className="flex-grow">
-                  <p className="text-muted-foreground leading-relaxed">{t(`aboutPage.${key}.paragraph`)}</p>
-                </CardContent>
-              </Card>
+                <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-2 h-full flex flex-col bg-card/70 hover:bg-card/70">
+                  <CardHeader className="flex-none">
+                    <div className="p-2 rounded-lg bg-primary/10 w-fit mb-2">
+                      <Icon className="size-6 text-primary" />
+                    </div>
+                    <h2 className="text-xl font-semibold">{t(`aboutPage.${key}.title`)}</h2>
+                  </CardHeader>
+                  <CardContent className="flex-grow">
+                    <p className="text-muted-foreground leading-relaxed">{t(`aboutPage.${key}.paragraph`)}</p>
+                  </CardContent>
+                </Card>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -167,20 +175,26 @@ export default function About({ lang }: AboutProps) {
             <Separator className="w-24 mx-auto" />
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
-            {examples.map((item) => (
-              <ProjectCard
+            {examples.map((item, index) => (
+              <motion.div
                 key={item.key}
-                title={t(`projects.items.${item.key}.title`)}
-                description={t(`projects.items.${item.key}.description`)}
-                technologies={item.technologies}
-                bgColor={item.bgColor}
-                textColor={item.textColor}
-                bgImage={item.bgImage}
-                logo={item.logo}
-                logoBg={item.logoBg}
-                url={item.url}
-                caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
-              />
+                ref={exampleCardRefs[index]}
+                {...useMobileCardAnimation(exampleCardRefs[index], index)}
+                className="md:transform-none w-full"
+              >
+                <ProjectCard
+                  title={t(`projects.items.${item.key}.title`)}
+                  description={t(`projects.items.${item.key}.description`)}
+                  technologies={item.technologies}
+                  bgColor={item.bgColor}
+                  textColor={item.textColor}
+                  bgImage={item.bgImage}
+                  logo={item.logo}
+                  logoBg={item.logoBg}
+                  url={item.url}
+                  caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
+                />
+              </motion.div>
             ))}
           </div>
           <div className="text-center mt-10">
