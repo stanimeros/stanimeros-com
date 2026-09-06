@@ -16,6 +16,14 @@ const PhoneIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
+// Inlined for the same reason as PhoneIcon above: avoid pulling in the
+// shared "icons" chunk (StarIcon/solid is also used by Testimonials).
+const StarIcon = (props: React.SVGProps<SVGSVGElement>) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...props}>
+    <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006Z" clipRule="evenodd" />
+  </svg>
+)
+
 const Hero = () => {
   const { t, i18n } = useTranslation()
   const { scrollY } = useScroll()
@@ -53,6 +61,18 @@ const Hero = () => {
             {t('hero.getInTouch')}
           </Button>
         </div>
+        <button
+          type="button"
+          onClick={() => scrollToId('testimonials')}
+          className="mt-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors relative z-20"
+        >
+          <span className="flex gap-0.5" aria-hidden="true">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <StarIcon key={i} className="size-4 text-yellow-400" />
+            ))}
+          </span>
+          {t('hero.googleReviews')}
+        </button>
         {/* Logo positioned behind everything */}
         <motion.div
           className="absolute inset-0 flex items-center justify-center z-0 pointer-events-none"

@@ -38,13 +38,12 @@ export default function Projects({ lang }: ProjectsProps) {
         {...(heroAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 flex items-center justify-center gap-3">
-              <BriefcaseIcon className="size-8 text-primary" />
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
+              <BriefcaseIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t("projects.title")}
             </h1>
             <Separator className="w-24 mx-auto mb-4" />
-            <p className="text-xl text-muted-foreground mb-4">{t("projects.subtitle")}</p>
-            <p className="text-muted-foreground">{t("projectsPage.intro")}</p>
+            <p className="text-xl text-muted-foreground">{t("projectsPage.intro")}</p>
           </div>
         </div>
       </motion.section>

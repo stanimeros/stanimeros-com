@@ -33,7 +33,7 @@ import Testimonials from "@/components/Testimonials"
 import { ContactChannels } from "@/components/ContactChannels"
 import { trackEvent } from "@/lib/events"
 import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
-import { projectItems, keyToSlug } from "@/lib/projects-data"
+import { projectItems, keyToSlug, sampleRandom, type ProjectItem } from "@/lib/projects-data"
 import { FacebookIcon, InstagramIcon, LinkedinIcon, GithubIcon, BriefcaseIcon } from "lucide-react"
 
 interface HomeSectionsProps {
@@ -58,7 +58,12 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
   // Refs for card animations
   const serviceCardRefs = Array(5).fill(null).map(() => useRef<HTMLDivElement>(null))
   const packageCardRefs = Array(3).fill(null).map(() => useRef<HTMLDivElement>(null))
-  const featuredProjectItems = projectItems
+  // Start with a deterministic slice so SSR and the first client render match
+  // exactly (avoids a hydration mismatch), then swap in a random 12 client-side.
+  const [featuredProjectItems, setFeaturedProjectItems] = useState<ProjectItem[]>(() => projectItems.slice(0, 12))
+  useEffect(() => {
+    setFeaturedProjectItems(sampleRandom(projectItems, 12))
+  }, [])
   const projectCardRefs = Array(featuredProjectItems.length).fill(null).map(() => useRef<HTMLDivElement>(null))
   
   // Get animation props for each section
@@ -100,8 +105,8 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
         {...(aboutAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-              <UserIcon className="size-8 text-primary" />
+            <h2 className="text-4xl font-bold mb-4 text-center">
+              <UserIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('about.title')}
             </h2>
             <Separator className="w-24 mx-auto" />
@@ -168,8 +173,8 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
         {...(servicesAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-              <WrenchScrewdriverIcon className="size-8 text-primary" />
+            <h2 className="text-4xl font-bold mb-4 text-center">
+              <WrenchScrewdriverIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('services.title')}
             </h2>
             <Separator className="w-24 mx-auto" />
@@ -234,8 +239,8 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
         {...(packagesAnimation as HTMLMotionProps<"section">)}>
         <div className="mx-auto px-4 max-w-[1600px]">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-              <CubeTransparentIcon className="size-8 text-primary" />
+            <h2 className="text-4xl font-bold mb-4 text-center">
+              <CubeTransparentIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('packages.title')}
             </h2>
             <Separator className="w-24 mx-auto mb-4" />
@@ -347,6 +352,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
               <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 shrink-0">
                 <div className="text-lg font-semibold text-primary whitespace-nowrap">{t('packages.maintenance.price')}</div>
                 <Button variant="outline" onClick={() => goToContact('maintenance-card')}>
+                  <WrenchScrewdriverIcon className="size-5 mr-2 stroke-[1.5]" />
                   {t('packages.getStarted')}
                 </Button>
               </div>
@@ -443,8 +449,8 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
         {...(projectsAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-              <BriefcaseIcon className="size-8 text-primary" />
+            <h2 className="text-4xl font-bold mb-4 text-center">
+              <BriefcaseIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t("projects.title")}
             </h2>
             <Separator className="w-24 mx-auto mb-4" />
@@ -477,6 +483,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
           <div className="text-center mt-10">
             <Button variant="outline" asChild>
               <a href={`${prefix}/projects`}>
+                <BriefcaseIcon className="size-5 mr-2 stroke-[1.5]" />
                 {t("servicesPage.links.projects")}
               </a>
             </Button>
@@ -492,8 +499,8 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
         {...(contactAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-              <PhoneIcon className="size-8 text-primary" />
+            <h2 className="text-4xl font-bold mb-4 text-center">
+              <PhoneIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('contact.title')}
             </h2>
             <Separator className="w-24 mx-auto mb-4" />
@@ -539,7 +546,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
               onClick={() => goToContact('contact-section')}
             >
               <CalendarDaysIcon className="size-5 mr-2 stroke-[1.5]" />
-              {t('contact.form.send')}
+              {t('contact.ctaButton')}
             </Button>
 
             <div className="flex flex-col items-center gap-4">

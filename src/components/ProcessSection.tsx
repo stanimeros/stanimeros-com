@@ -32,8 +32,8 @@ export default function ProcessSection() {
 
       <div className="container mx-auto px-4">
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-            <ListBulletIcon className="size-8 text-primary" />
+          <h2 className="text-4xl font-bold mb-4 text-center">
+            <ListBulletIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
             {t('process.title')}
           </h2>
           <Separator className="w-24 mx-auto mb-4" />

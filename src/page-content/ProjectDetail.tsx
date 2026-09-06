@@ -152,8 +152,8 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
           {...(relatedAnimation as HTMLMotionProps<"section">)}>
           <div className="container mx-auto px-4">
             <div className="text-center mb-16">
-              <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-                <Squares2X2Icon className="size-8 text-primary" />
+              <h2 className="text-4xl font-bold mb-4 text-center">
+                <Squares2X2Icon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
                 {t("projectDetail.relatedTitle")}
               </h2>
               <Separator className="w-24 mx-auto" />

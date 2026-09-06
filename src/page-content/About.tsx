@@ -72,8 +72,8 @@ export default function About({ lang }: AboutProps) {
         {...(heroAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 flex items-center justify-center gap-3">
-              <UserIcon className="size-8 text-primary" />
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
+              <UserIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t("aboutPage.title")}
             </h1>
             <Separator className="w-24 mx-auto mb-4" />
@@ -160,8 +160,8 @@ export default function About({ lang }: AboutProps) {
         {...(projectsAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center flex items-center justify-center gap-3">
-              <BriefcaseIcon className="size-8 text-primary" />
+            <h2 className="text-4xl font-bold mb-4 text-center">
+              <BriefcaseIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t("projects.title")}
             </h2>
             <Separator className="w-24 mx-auto" />
@@ -186,6 +186,7 @@ export default function About({ lang }: AboutProps) {
           <div className="text-center mt-10">
             <Button variant="outline" asChild>
               <a href={`${prefix}/projects`}>
+                <BriefcaseIcon className="size-5 mr-2 stroke-[1.5]" />
                 {t("servicesPage.links.projects")}
               </a>
             </Button>

@@ -33,7 +33,8 @@
     "subtitleHighlight": "real solutions",
     "subtitleAfter": " for real business problems",
     "viewPackages": "View Packages",
-    "getInTouch": "Get In Touch"
+    "getInTouch": "Get In Touch",
+    "googleReviews": "5.0 on Google Reviews"
   },
   "about": {
     "title": "About Me",
@@ -562,6 +563,7 @@
   },
   "contact": {
     "title": "Get In Touch",
+    "ctaButton": "Get In Touch",
     "description": "Fill in your details below to get a free strategy call where we'll discuss your needs and find the best solution for you. No strings attached!",
     "channels": {
       "title": "Or reach out directly",

@@ -114,8 +114,8 @@ export default function Contact() {
         {...(heroAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
           <div className="text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 flex items-center justify-center gap-3">
-              <PhoneIcon className="size-8 text-primary" />
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
+              <PhoneIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
               {t('contact.title')}
             </h1>
             <Separator className="w-24 mx-auto mb-4" />
