@@ -321,29 +321,35 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
           </div>
 
           <Card className="mt-8 border-border/60 bg-card/70 w-full">
-            <CardContent className="p-6 flex flex-col md:flex-row md:items-center gap-6">
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <WrenchScrewdriverIcon className="size-6 text-primary shrink-0" />
-                  <CardTitle>{t('packages.maintenance.title')}</CardTitle>
+            <CardContent className="p-6 flex flex-col gap-6">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <WrenchScrewdriverIcon className="size-6 text-primary shrink-0" />
+                    <CardTitle>{t('packages.maintenance.title')}</CardTitle>
+                  </div>
+                  <CardDescription>{t('packages.maintenance.description')}</CardDescription>
+                  <div className="flex flex-wrap gap-x-5 gap-y-1.5 mt-3 text-sm text-muted-foreground">
+                    {(t('packages.maintenance.features', { returnObjects: true }) as string[]).map((feature, featureIndex) => (
+                      <span key={featureIndex} className="flex items-center gap-1.5">
+                        <CheckIcon className="size-4 text-primary" />
+                        {feature}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <CardDescription>{t('packages.maintenance.description')}</CardDescription>
-                <div className="flex flex-wrap gap-x-5 gap-y-1.5 mt-3 text-sm text-muted-foreground">
-                  {(t('packages.maintenance.features', { returnObjects: true }) as string[]).map((feature, featureIndex) => (
-                    <span key={featureIndex} className="flex items-center gap-1.5">
-                      <CheckIcon className="size-4 text-primary" />
-                      {feature}
-                    </span>
-                  ))}
+                <div className="flex flex-col md:items-end gap-3 shrink-0">
+                  <div className="text-lg font-semibold text-primary whitespace-nowrap">{t('packages.maintenance.price')}</div>
+                  <Button variant="outline" className="hidden md:inline-flex" onClick={() => goToContact('maintenance-card')}>
+                    <WrenchScrewdriverIcon className="size-5 mr-2 stroke-[1.5]" />
+                    {t('packages.getStarted')}
+                  </Button>
                 </div>
               </div>
-              <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-3 shrink-0">
-                <div className="text-lg font-semibold text-primary whitespace-nowrap">{t('packages.maintenance.price')}</div>
-                <Button variant="outline" onClick={() => goToContact('maintenance-card')}>
-                  <WrenchScrewdriverIcon className="size-5 mr-2 stroke-[1.5]" />
-                  {t('packages.getStarted')}
-                </Button>
-              </div>
+              <Button variant="outline" className="w-full md:hidden" onClick={() => goToContact('maintenance-card')}>
+                <WrenchScrewdriverIcon className="size-5 mr-2 stroke-[1.5]" />
+                {t('packages.getStarted')}
+              </Button>
             </CardContent>
           </Card>
 

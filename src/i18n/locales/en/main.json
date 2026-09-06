@@ -34,7 +34,8 @@
     "subtitleAfter": " for real business problems",
     "viewPackages": "View Packages",
     "getInTouch": "Get In Touch",
-    "googleReviews": "5.0 on Google Reviews"
+    "googleReviews": "5.0 on Google Reviews",
+    "verifiedReviews": "Verified Reviews"
   },
   "about": {
     "title": "About Me",
@@ -528,20 +529,38 @@
     "quotes": {
       "first": {
         "title": "Truly exceptional developer",
-        "quote": "A truly excellent developer who has helped me a lot. He's not just interested in giving you a solution, but in making sure you understand what you're doing too. I recommend him without a second thought.",
+        "quote": "A truly excellent developer who has helped me a lot. He's not just interested in giving you a solution, but in making sure you understand what you're doing too. Patient, knowledgeable, and genuinely helpful. I recommend him without a second thought.",
         "attribution": "Angel C.",
         "rating": 5
       },
       "second": {
         "title": "Reliable and transparent",
-        "quote": "I've been working with stanimeros development and I'm absolutely satisfied! Everything we agree on gets done on time, with clear pricing and no hidden charges. I'll keep trusting him because together we build exactly what my business needs.",
+        "quote": "Extremely happy working with him on stanimeros development. Everything we agree on gets done on time, with clear pricing and no hidden charges. I'll keep trusting him because together we build exactly what my business needs.",
         "attribution": "Niki M.",
         "rating": 5
       },
       "third": {
         "title": "Years of excellent collaboration",
-        "quote": "Pantelis and I have been working together for 3 years developing my app, and it's been an excellent collaboration, both professionally and personally. He has real expertise, consistency, fast turnaround, and attention to detail. I recommend him without reservation.",
+        "quote": "Pantelis and I have been working together for 3 years developing my app, and it's been an outstanding collaboration, both professionally and personally. Real expertise, thoughtful ideas, consistency, fast turnaround, and attention to detail.",
         "attribution": "Maria K.",
+        "rating": 5
+      },
+      "fourth": {
+        "title": "Excellent mobile app development",
+        "quote": "Worked with Pantelis on a mobile app project and he's been excellent throughout. Clean, well-thought-out code, quick turnaround, and he actually thinks about the product rather than just closing tickets. Would happily work with him again.",
+        "attribution": "Evangelos B.",
+        "rating": 5
+      },
+      "fifth": {
+        "title": "Everything we imagined for our eshop",
+        "quote": "An excellent partner for our eshop. We built everything we could imagine, from automations to analytics for our sales and profitability. Clear communication throughout and great results. Highly recommend him.",
+        "attribution": "Petros M.",
+        "rating": 5
+      },
+      "sixth": {
+        "title": "Flawless collaboration building my e-shop",
+        "quote": "An excellent developer and professional in every way. From the very first moment he guided me, with constant communication throughout the build of my e-shop. Flawless collaboration, very happy with the result, I recommend him.",
+        "attribution": "Stelios T.",
         "rating": 5
       }
     }

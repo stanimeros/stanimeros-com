@@ -6,6 +6,7 @@ import UnderlineHighlight from "@/components/UnderlineHighlight"
 import { CubeTransparentIcon } from "@heroicons/react/24/outline"
 import { trackEvent } from "@/lib/events"
 import { scrollToId } from "@/lib/scroll"
+import GoogleLogo from "@/components/icons/GoogleLogo"
 
 // Inlined instead of imported from @heroicons/react so Hero's client:load
 // bundle doesn't have to pull in the shared "icons" chunk used by
@@ -23,6 +24,7 @@ const StarIcon = (props: React.SVGProps<SVGSVGElement>) => (
     <path fillRule="evenodd" d="M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.007 5.404.433c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.433 2.082-5.006Z" clipRule="evenodd" />
   </svg>
 )
+
 
 const Hero = () => {
   const { t, i18n } = useTranslation()
@@ -64,14 +66,19 @@ const Hero = () => {
         <button
           type="button"
           onClick={() => scrollToId('testimonials')}
-          className="mt-6 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors relative z-20"
+          aria-label={t('hero.googleReviews')}
+          className="mt-6 inline-flex flex-col items-center gap-1 px-4 py-2 rounded-full border border-border/60 bg-card/70 text-sm font-medium text-muted-foreground hover:text-foreground hover:border-border transition-colors relative z-20"
         >
-          <span className="flex gap-0.5" aria-hidden="true">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <StarIcon key={i} className="size-4 text-yellow-400" />
-            ))}
+          <span className="text-xs">{t('hero.verifiedReviews')}</span>
+          <span className="flex items-center gap-2">
+            <GoogleLogo className="size-5 shrink-0" />
+            <span>5.0</span>
+            <span className="flex gap-0.5" aria-hidden="true">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <StarIcon key={i} className="size-4 text-yellow-400" />
+              ))}
+            </span>
           </span>
-          {t('hero.googleReviews')}
         </button>
         {/* Logo positioned behind everything */}
         <motion.div
