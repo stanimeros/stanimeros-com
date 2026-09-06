@@ -232,8 +232,8 @@ export default function Contact() {
         className="pb-20 scroll-mt-10 overflow-hidden"
         {...(faqAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
-          <h2 className="text-2xl font-semibold text-center mb-8 flex items-center justify-center gap-2">
-            <QuestionMarkCircleIcon className="size-6 text-primary shrink-0" />
+          <h2 className="text-2xl font-semibold text-center mb-8">
+            <QuestionMarkCircleIcon className="inline-block size-6 text-primary align-middle mr-1.5 -mt-1" />
             {t('packages.faq.title')}
           </h2>
           <Accordion type="single" collapsible className="w-full max-w-3xl mx-auto">

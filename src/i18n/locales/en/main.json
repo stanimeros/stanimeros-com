@@ -235,7 +235,6 @@
   },
   "servicesPage": {
     "title": "Services",
-    "subtitle": "Practical technology built around your business, not the other way around.",
     "intro": "Below is a fuller look at what I build. Every service can stand on its own or combine with the others into a single system tailored to your business.",
     "items": {
       "website": {

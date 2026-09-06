@@ -58,12 +58,10 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
   // Refs for card animations
   const serviceCardRefs = Array(5).fill(null).map(() => useRef<HTMLDivElement>(null))
   const packageCardRefs = Array(3).fill(null).map(() => useRef<HTMLDivElement>(null))
-  // Start with a deterministic slice so SSR and the first client render match
-  // exactly (avoids a hydration mismatch), then swap in a random 12 client-side.
-  const [featuredProjectItems, setFeaturedProjectItems] = useState<ProjectItem[]>(() => projectItems.slice(0, 12))
-  useEffect(() => {
-    setFeaturedProjectItems(sampleRandom(projectItems, 12))
-  }, [])
+  // Picked once on mount and never swapped again — this component only hydrates
+  // when scrolled into view (client:visible), so re-randomizing later would remount
+  // already-visible cards mid-scroll and could strand their fade-in animation at opacity 0.
+  const [featuredProjectItems] = useState<ProjectItem[]>(() => sampleRandom(projectItems, 12))
   const projectCardRefs = Array(featuredProjectItems.length).fill(null).map(() => useRef<HTMLDivElement>(null))
   
   // Get animation props for each section
@@ -361,8 +359,8 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
 
           {/* FAQ Section */}
           <div className="mt-20">
-            <h3 className="text-2xl font-semibold text-center mb-8 flex items-center justify-center gap-2">
-              <QuestionMarkCircleIcon className="size-6 text-primary shrink-0" />
+            <h3 className="text-2xl font-semibold text-center mb-8">
+              <QuestionMarkCircleIcon className="inline-block size-6 text-primary align-middle mr-1.5 -mt-1" />
               {t('packages.faq.title')}
             </h3>
             <Accordion type="single" collapsible className="w-full max-w-3xl mx-auto">
