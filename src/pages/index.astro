@@ -2,23 +2,12 @@
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedHero from '@/page-content/Hero.localized'
 import LocalizedHomeSections from '@/page-content/HomeSections.localized'
-import { professionalServiceJsonLd, homeFaqJsonLd } from '@/lib/jsonld'
+import { seo } from '@/i18n/seo'
+
+const s = seo.home.en
 ---
 
-<BaseLayout
-  lang="en"
-  title="Websites & Apps From €350 | Pantelis Stanimeros"
-  description="Software engineering studio in Thessaloniki, Greece. Websites from €350, apps from €950, AI automation on custom quote. We respond within 2 hours."
-  keywords="AI automation Greece, software engineering studio Thessaloniki, mobile app development Greece, custom web app developer, website development Greece, Pantelis Stanimeros"
-  canonical="https://stanimeros.com/"
-  preloadImage="/images/logo-glass.webp"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/' },
-  ]}
-  jsonLd={[professionalServiceJsonLd, homeFaqJsonLd]}
->
+<BaseLayout lang="en" {...s}>
   <LocalizedHero lang="en" client:load />
   <LocalizedHomeSections lang="en" client:visible />
 </BaseLayout>

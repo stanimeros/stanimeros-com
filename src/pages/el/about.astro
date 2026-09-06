@@ -1,19 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedAbout from '@/page-content/About.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.about.el
 ---
 
-<BaseLayout
-  lang="el"
-  title="Σχετικά με εμένα | Pantelis Stanimeros"
-  description="Μηχανικός λογισμικού στη Θεσσαλονίκη, με πτυχίο Επιστήμης Υπολογιστών και MSc στην Τεχνητή Νοημοσύνη & Ανάλυση Δεδομένων. AI αυτοματισμοί, εφαρμογές και συστήματα βελτιστοποίησης."
-  canonical="https://stanimeros.com/el/about"
-  preloadImage="/images/pantelis.webp"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/about' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el/about' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/about' },
-  ]}
->
+<BaseLayout lang="el" {...s}>
   <LocalizedAbout lang="el" client:load />
 </BaseLayout>

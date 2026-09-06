@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { motion, type HTMLMotionProps } from "framer-motion"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Section, SectionHeading, MutedLink } from "@/components/ui/section"
 import { ProjectCard } from "@/components/ProjectCard"
 import ProcessSection from "@/components/ProcessSection"
 import Testimonials from "@/components/Testimonials"
@@ -70,19 +70,14 @@ export default function About({ lang }: AboutProps) {
   return (
     <>
       {/* Hero Section */}
-      <motion.section
-        ref={heroRef}
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(heroAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={heroRef} {...heroAnimation}>
         <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
-              <UserIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t("aboutPage.title")}
-            </h1>
-            <p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t("aboutPage.intro")}</p>
-            <Separator className="w-24 mx-auto mt-4" />
-          </div>
+          <SectionHeading
+            as="h1"
+            icon={UserIcon}
+            title={t("aboutPage.title")}
+            subtitle={<p className="text-xl text-muted-foreground max-w-2xl mx-auto">{t("aboutPage.intro")}</p>}
+          />
 
           <div className="grid md:grid-cols-2 gap-12 items-center max-w-5xl mx-auto">
             <div>
@@ -109,13 +104,10 @@ export default function About({ lang }: AboutProps) {
             </div>
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       {/* Background / Problems / Why Work With Me */}
-      <motion.section
-        ref={sectionsRef}
-        className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-        {...(sectionsAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={sectionsRef} shaded {...sectionsAnimation}>
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6 w-full">
             {sections.map(({ key, icon: Icon }, index) => (
@@ -140,13 +132,10 @@ export default function About({ lang }: AboutProps) {
             ))}
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       {/* GitHub activity */}
-      <motion.section
-        ref={githubRef}
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(githubAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={githubRef} {...githubAnimation}>
         <div className="container mx-auto px-4">
           <div className="overflow-hidden w-full flex justify-center">
             {isMounted && <GitHubCalendarComponent username="stanimeros" />}
@@ -155,25 +144,17 @@ export default function About({ lang }: AboutProps) {
             <p className="text-muted-foreground text-sm">{t('about.githubDescription')}</p>
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       <Testimonials />
 
       <ProcessSection />
 
       {/* Example projects */}
-      <motion.section
-        ref={projectsRef}
-        className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-        {...(projectsAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={projectsRef} shaded {...projectsAnimation}>
         <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <BriefcaseIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t("projects.title")}
-            </h2>
-            <Separator className="w-24 mx-auto" />
-          </div>
+          <SectionHeading icon={BriefcaseIcon} title={t("projects.title")} />
+
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
             {examples.map((item, index) => (
               <motion.div
@@ -206,13 +187,10 @@ export default function About({ lang }: AboutProps) {
             </Button>
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       {/* CTA */}
-      <motion.section
-        ref={ctaRef}
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(ctaAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={ctaRef} {...ctaAnimation}>
         <div className="container mx-auto px-4">
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="text-3xl font-bold mb-3">{t("aboutPage.cta.title")}</h2>
@@ -225,16 +203,16 @@ export default function About({ lang }: AboutProps) {
             </Button>
 
             <div className="flex justify-center gap-6 text-sm">
-              <a href={`${prefix}/services`} className="text-muted-foreground hover:text-primary transition-colors">
+              <MutedLink href={`${prefix}/services`}>
                 {t("aboutPage.links.services")}
-              </a>
-              <a href={`${prefix}/contact`} className="text-muted-foreground hover:text-primary transition-colors">
+              </MutedLink>
+              <MutedLink href={`${prefix}/contact`}>
                 {t("aboutPage.links.contact")}
-              </a>
+              </MutedLink>
             </div>
           </div>
         </div>
-      </motion.section>
+      </Section>
     </>
   )
 }

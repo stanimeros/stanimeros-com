@@ -1,7 +1,7 @@
 import { useRef } from "react"
-import { motion, type HTMLMotionProps } from "framer-motion"
+import { motion } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import { Separator } from "@/components/ui/separator"
+import { Section, SectionHeading } from "@/components/ui/section"
 import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import UnderlineHighlight from "@/components/UnderlineHighlight"
 import {
@@ -29,24 +29,17 @@ export default function WhySection() {
   const painPointCardRefs = Array(painPoints.length).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   return (
-    <motion.section
-      ref={sectionRef}
-      id="why"
-      className="py-20 scroll-mt-10 overflow-hidden relative"
-      {...(animation as HTMLMotionProps<"section">)}>
+    <Section ref={sectionRef} id="why" className="relative" {...animation}>
 
       <HandRaisedIcon className="absolute left-8 top-1/2 -translate-y-1/2 size-40 text-red-400/5 pointer-events-none hidden xl:block" />
       <BoltIcon className="absolute right-8 top-1/2 -translate-y-1/2 size-40 text-primary/5 pointer-events-none hidden xl:block" />
 
       <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold mb-4 text-center">
-            <HandRaisedIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-            {t('why.title')}
-          </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">{t('why.subtitle')}</p>
-          <Separator className="w-24 mx-auto mt-4" />
-        </div>
+        <SectionHeading
+          icon={HandRaisedIcon}
+          title={t('why.title')}
+          subtitle={<p className="text-muted-foreground max-w-2xl mx-auto">{t('why.subtitle')}</p>}
+        />
 
         <div className="max-w-3xl mx-auto">
           {painPoints.map(({ key, icon: Icon }, index) => (
@@ -82,6 +75,6 @@ export default function WhySection() {
           </p>
         </div>
       </div>
-    </motion.section>
+    </Section>
   )
 }

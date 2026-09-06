@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { motion, type HTMLMotionProps } from "framer-motion"
+import { motion } from "framer-motion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Section, SectionHeading, MutedLink } from "@/components/ui/section"
 import ProcessSection from "@/components/ProcessSection"
 import Testimonials from "@/components/Testimonials"
 import { ProjectCard } from "@/components/ProjectCard"
@@ -64,16 +65,16 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
 
   return (
     <>
-      <section className="py-20 scroll-mt-10 overflow-hidden">
+      <Section>
         <div className="container mx-auto px-4">
           <div className="max-w-3xl mx-auto">
-            <a
+            <MutedLink
               href={`${prefix}/projects`}
-              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors mb-6"
+              className="inline-flex items-center gap-1.5 text-sm mb-6"
             >
               <ArrowLeftIcon className="size-4" />
               {t("servicesPage.links.projects")}
-            </a>
+            </MutedLink>
 
             <div className="flex items-center gap-4 mb-4">
               <div
@@ -144,25 +145,16 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
             </div>
           </div>
         </div>
-      </section>
+      </Section>
 
       <ProcessSection />
 
       <Testimonials />
 
       {related.length > 0 && (
-        <motion.section
-          ref={relatedRef}
-          className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-          {...(relatedAnimation as HTMLMotionProps<"section">)}>
+        <Section ref={relatedRef} shaded {...relatedAnimation}>
           <div className="container mx-auto px-4">
-            <div className="text-center mb-16">
-              <h2 className="text-4xl font-bold mb-4 text-center">
-                <Squares2X2Icon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-                {t("projectDetail.relatedTitle")}
-              </h2>
-              <Separator className="w-24 mx-auto" />
-            </div>
+            <SectionHeading icon={Squares2X2Icon} title={t("projectDetail.relatedTitle")} />
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
               {related.map((relatedItem, index) => (
                 <motion.div
@@ -188,22 +180,16 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
               ))}
             </div>
             <div className="text-center mt-10">
-              <a
-                href={`${prefix}/projects`}
-                className="text-sm text-muted-foreground hover:text-primary transition-colors"
-              >
+              <MutedLink href={`${prefix}/projects`} className="text-sm">
                 {t("servicesPage.links.projects")}
-              </a>
+              </MutedLink>
             </div>
           </div>
-        </motion.section>
+        </Section>
       )}
 
       {/* CTA */}
-      <motion.section
-        ref={ctaRef}
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(ctaAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={ctaRef} {...ctaAnimation}>
         <div className="container mx-auto px-4">
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="text-3xl font-bold mb-3">{t("projectDetail.ctaSection.title")}</h2>
@@ -216,19 +202,19 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
             </Button>
 
             <div className="flex justify-center gap-6 text-sm">
-              <a href={`${prefix}/about`} className="text-muted-foreground hover:text-primary transition-colors">
+              <MutedLink href={`${prefix}/about`}>
                 {t("servicesPage.links.about")}
-              </a>
-              <a href={`${prefix}/projects`} className="text-muted-foreground hover:text-primary transition-colors">
+              </MutedLink>
+              <MutedLink href={`${prefix}/projects`}>
                 {t("servicesPage.links.projects")}
-              </a>
-              <a href={`${prefix}/services`} className="text-muted-foreground hover:text-primary transition-colors">
+              </MutedLink>
+              <MutedLink href={`${prefix}/services`}>
                 {t("servicesPage.title")}
-              </a>
+              </MutedLink>
             </div>
           </div>
         </div>
-      </motion.section>
+      </Section>
     </>
   )
 }

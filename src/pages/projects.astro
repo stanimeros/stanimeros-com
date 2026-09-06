@@ -1,18 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedProjects from '@/page-content/Projects.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.projects.en
 ---
 
-<BaseLayout
-  lang="en"
-  title="Projects | Websites, Apps & Dashboards | Pantelis Stanimeros"
-  description="Browse all the websites, mobile apps, and dashboards I've built for real businesses, from e-commerce and travel to AI-powered tools."
-  canonical="https://stanimeros.com/projects"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/projects' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el/projects' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/projects' },
-  ]}
->
+<BaseLayout lang="en" {...s}>
   <LocalizedProjects lang="en" client:load />
 </BaseLayout>

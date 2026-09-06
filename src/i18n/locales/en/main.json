@@ -23,7 +23,7 @@
     "home": "Home",
     "about": "About",
     "services": "Services",
-    "projects": "Portfolio",
+    "projects": "Projects",
     "contact": "Contact",
     "menu": "Menu"
   },
@@ -262,7 +262,7 @@
     "links": {
       "about": "Learn more about me",
       "contact": "Get in touch",
-      "projects": "See the full portfolio"
+      "projects": "See all projects"
     }
   },
   "projectCard": {
@@ -288,7 +288,7 @@
     }
   },
   "projects": {
-    "title": "Portfolio",
+    "title": "Projects",
     "subtitle": "Projects I've built, from mobile apps to web platforms.",
     "items": {
       "party": {

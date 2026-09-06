@@ -1,18 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedProjects from '@/page-content/Projects.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.projects.el
 ---
 
-<BaseLayout
-  lang="el"
-  title="Projects | Ιστοσελίδες, Εφαρμογές & Dashboards | Παντελής Στανήμερος"
-  description="Δες όλες τις ιστοσελίδες, εφαρμογές κινητών και dashboards που έχω φτιάξει για πραγματικές επιχειρήσεις, από e-commerce και ταξίδια έως εργαλεία με AI."
-  canonical="https://stanimeros.com/el/projects"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/projects' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el/projects' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/projects' },
-  ]}
->
+<BaseLayout lang="el" {...s}>
   <LocalizedProjects lang="el" client:load />
 </BaseLayout>

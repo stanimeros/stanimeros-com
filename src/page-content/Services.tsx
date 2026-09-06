@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { motion, type HTMLMotionProps } from "framer-motion"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Section, SectionHeading, MutedLink } from "@/components/ui/section"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ProjectCard } from "@/components/ProjectCard"
 import ProcessSection from "@/components/ProcessSection"
@@ -118,27 +118,20 @@ export default function Services({ lang }: ServicesProps) {
   return (
     <>
       {/* Hero */}
-      <motion.section
-        ref={heroRef}
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(heroAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={heroRef} {...heroAnimation}>
         <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
-              <WrenchScrewdriverIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t("servicesPage.title")}
-            </h1>
-            <p className="text-xl text-muted-foreground">{t("servicesPage.intro")}</p>
-            <Separator className="w-24 mx-auto mt-4" />
-          </div>
+          <SectionHeading
+            as="h1"
+            icon={WrenchScrewdriverIcon}
+            title={t("servicesPage.title")}
+            wrapperClassName="max-w-3xl mx-auto text-center"
+            subtitle={<p className="text-xl text-muted-foreground">{t("servicesPage.intro")}</p>}
+          />
         </div>
-      </motion.section>
+      </Section>
 
       {/* What I do */}
-      <motion.section
-        ref={itemsRef}
-        className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-        {...(itemsAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={itemsRef} shaded {...itemsAnimation}>
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
             {items.map(({ key, icon: Icon }, index) => (
@@ -165,26 +158,21 @@ export default function Services({ lang }: ServicesProps) {
             ))}
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       {/* Packages */}
-      <motion.section
-        ref={packagesRef}
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(packagesAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={packagesRef} {...packagesAnimation}>
         <div className="mx-auto px-4 max-w-[1600px]">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <CubeTransparentIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t('packages.title')}
-            </h2>
-            <p className="text-muted-foreground max-w-3xl mx-auto">{t('packages.subtitle')}</p>
-            <Separator className="w-24 mx-auto mt-4" />
+          <SectionHeading
+            icon={CubeTransparentIcon}
+            title={t('packages.title')}
+            subtitle={<p className="text-muted-foreground max-w-3xl mx-auto">{t('packages.subtitle')}</p>}
+          >
             <div className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 text-primary font-medium text-sm">
               <ClockIcon className="size-4" />
               {t('packages.footer')}
             </div>
-          </div>
+          </SectionHeading>
           <div className="grid md:grid-cols-3 gap-8 w-full">
             {packages.map((pkg, index) => (
               <motion.div
@@ -261,7 +249,7 @@ export default function Services({ lang }: ServicesProps) {
             </CardContent>
           </Card>
         </div>
-      </motion.section>
+      </Section>
 
       {/* FAQ */}
       <motion.section
@@ -289,19 +277,9 @@ export default function Services({ lang }: ServicesProps) {
       <ProcessSection />
 
       {/* All projects */}
-      <motion.section
-        id="projects"
-        ref={projectsRef}
-        className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-        {...(projectsAnimation as HTMLMotionProps<"section">)}>
+      <Section id="projects" ref={projectsRef} shaded {...projectsAnimation}>
         <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <BriefcaseIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t("projects.title")}
-            </h2>
-            <Separator className="w-24 mx-auto" />
-          </div>
+          <SectionHeading icon={BriefcaseIcon} title={t("projects.title")} />
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
             {projectItems.map((item, index) => (
               <motion.div
@@ -334,13 +312,10 @@ export default function Services({ lang }: ServicesProps) {
             </Button>
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       {/* CTA */}
-      <motion.section
-        ref={ctaRef}
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(ctaAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={ctaRef} {...ctaAnimation}>
         <div className="container mx-auto px-4">
           <div className="max-w-2xl mx-auto text-center">
             <h2 className="text-3xl font-bold mb-3">{t("servicesPage.cta.title")}</h2>
@@ -353,16 +328,16 @@ export default function Services({ lang }: ServicesProps) {
             </Button>
 
             <div className="flex justify-center gap-6 text-sm">
-              <a href={`${prefix}/about`} className="text-muted-foreground hover:text-primary transition-colors">
+              <MutedLink href={`${prefix}/about`}>
                 {t("servicesPage.links.about")}
-              </a>
-              <a href={`${prefix}/contact`} className="text-muted-foreground hover:text-primary transition-colors">
+              </MutedLink>
+              <MutedLink href={`${prefix}/contact`}>
                 {t("servicesPage.links.contact")}
-              </a>
+              </MutedLink>
             </div>
           </div>
         </div>
-      </motion.section>
+      </Section>
     </>
   )
 }

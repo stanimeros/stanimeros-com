@@ -4,7 +4,7 @@ import { motion, type HTMLMotionProps } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
+import { SectionHeading } from "@/components/ui/section"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ContactChannels } from "@/components/ContactChannels"
 import {
@@ -116,14 +116,13 @@ export default function Contact() {
         className="pt-20 pb-8 scroll-mt-10 overflow-hidden"
         {...(heroAnimation as HTMLMotionProps<"section">)}>
         <div className="container mx-auto px-4">
-          <div className="text-center">
-            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-center">
-              <PhoneIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t('contact.title')}
-            </h1>
-            <p className="text-foreground font-medium max-w-2xl mx-auto">{t('contact.form.description')}</p>
-            <Separator className="w-24 mx-auto mt-4" />
-          </div>
+          <SectionHeading
+            as="h1"
+            icon={PhoneIcon}
+            title={t('contact.title')}
+            wrapperClassName="text-center"
+            subtitle={<p className="text-foreground font-medium max-w-2xl mx-auto">{t('contact.form.description')}</p>}
+          />
         </div>
       </motion.section>
 
@@ -140,7 +139,7 @@ export default function Contact() {
 
           {status === "success" ? (
             <div className="text-center space-y-4 max-w-lg mx-auto">
-              <CheckCircleIcon className="size-16 text-green-400 mx-auto" />
+              <CheckCircleIcon className="size-16 text-green-500 mx-auto" />
               <h2 className="text-3xl font-bold">{t('contact.title')}</h2>
               <p className="text-muted-foreground">{t('contact.form.success')}</p>
             </div>
@@ -201,7 +200,7 @@ export default function Contact() {
                     </>
                   ) : (
                     <>
-                      <PaperAirplaneIcon className="size-5 mr-2" />
+                      <PaperAirplaneIcon className="size-5 mr-2 stroke-[1.5]" />
                       {t('contact.form.send')}
                     </>
                   )}

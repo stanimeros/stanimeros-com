@@ -1,14 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedDataDeletion from '@/page-content/DataDeletion.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.dataDeletion.el
 ---
 
-<BaseLayout
-  lang="el"
-  title="Διαγραφή Δεδομένων | Pantelis Stanimeros"
-  description="Ζητήστε διαγραφή των δεδομένων σας από εφαρμογές και υπηρεσίες του Pantelis Stanimeros."
-  canonical="https://stanimeros.com/el/data-deletion"
-  noindex
->
+<BaseLayout lang="el" {...s}>
   <LocalizedDataDeletion lang="el" client:load />
 </BaseLayout>

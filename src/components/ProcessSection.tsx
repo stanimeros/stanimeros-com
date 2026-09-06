@@ -1,7 +1,7 @@
 import { useRef } from "react"
-import { motion, type HTMLMotionProps } from "framer-motion"
+import { motion } from "framer-motion"
 import { useTranslation } from "react-i18next"
-import { Separator } from "@/components/ui/separator"
+import { Section, SectionHeading } from "@/components/ui/section"
 import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import {
   ListBulletIcon,
@@ -27,21 +27,14 @@ export default function ProcessSection() {
   const stepCardRefs = Array(steps.length).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   return (
-    <motion.section
-      ref={sectionRef}
-      id="process"
-      className="py-20 scroll-mt-10 overflow-hidden"
-      {...(animation as HTMLMotionProps<"section">)}>
+    <Section ref={sectionRef} id="process" {...animation}>
 
       <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold mb-4 text-center">
-            <ListBulletIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-            {t('process.title')}
-          </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">{t('process.subtitle')}</p>
-          <Separator className="w-24 mx-auto mt-4" />
-        </div>
+        <SectionHeading
+          icon={ListBulletIcon}
+          title={t('process.title')}
+          subtitle={<p className="text-muted-foreground max-w-2xl mx-auto">{t('process.subtitle')}</p>}
+        />
 
         <div className="max-w-3xl mx-auto">
           {steps.map(({ key, icon: Icon }, index) => (
@@ -71,6 +64,6 @@ export default function ProcessSection() {
           ))}
         </div>
       </div>
-    </motion.section>
+    </Section>
   )
 }

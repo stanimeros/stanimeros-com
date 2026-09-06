@@ -1,18 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedContact from '@/page-content/Contact.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.contact.el
 ---
 
-<BaseLayout
-  lang="el"
-  title="Επικοινωνία | Pantelis Stanimeros"
-  description="Κλείσε μια δωρεάν αρχική συνάντηση για να συζητήσουμε την εφαρμογή ή τον αυτοματισμό που χρειάζεσαι. Απαντάμε εντός 2 ωρών."
-  canonical="https://stanimeros.com/el/contact"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/contact' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el/contact' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/contact' },
-  ]}
->
+<BaseLayout lang="el" {...s}>
   <LocalizedContact lang="el" client:load />
 </BaseLayout>

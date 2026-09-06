@@ -1,8 +1,7 @@
 import { useRef } from "react"
-import { motion, type HTMLMotionProps } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Card, CardContent } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
+import { Section, SectionHeading } from "@/components/ui/section"
 import { useScrollAnimation } from "@/lib/hooks"
 import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline"
 import { StarIcon } from "@heroicons/react/24/solid"
@@ -15,20 +14,13 @@ export default function Testimonials() {
   const animation = useScrollAnimation(sectionRef)
 
   return (
-    <motion.section
-      ref={sectionRef}
-      id="testimonials"
-      className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-      {...(animation as HTMLMotionProps<"section">)}>
+    <Section ref={sectionRef} id="testimonials" shaded {...animation}>
       <div className="container mx-auto px-4">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold mb-4 text-center">
-            <ChatBubbleLeftRightIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-            {t("testimonials.title")}
-          </h2>
-          <p className="text-muted-foreground max-w-2xl mx-auto">{t("testimonials.subtitle")}</p>
-          <Separator className="w-24 mx-auto mt-4" />
-        </div>
+        <SectionHeading
+          icon={ChatBubbleLeftRightIcon}
+          title={t("testimonials.title")}
+          subtitle={<p className="text-muted-foreground max-w-2xl mx-auto">{t("testimonials.subtitle")}</p>}
+        />
 
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
           {quoteKeys.map((key) => {
@@ -65,6 +57,6 @@ export default function Testimonials() {
           })}
         </div>
       </div>
-    </motion.section>
+    </Section>
   )
 }

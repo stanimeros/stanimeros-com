@@ -44,7 +44,7 @@ export default function CookieBanner() {
       aria-labelledby="cookie-banner-title"
       className="fixed bottom-10 sm:bottom-14 md:bottom-16 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-xl pointer-events-none"
     >
-      <div className="bg-card border border-border/80 rounded-2xl shadow-[0_16px_50px_rgba(0,0,0,0.45)] p-6 sm:p-8 pointer-events-auto">
+      <div className="bg-card border border-border/80 rounded-2xl shadow-floating p-6 sm:p-8 pointer-events-auto">
         <div className="flex items-center gap-3 sm:gap-4 mb-4">
           <CakeIcon className="size-8 text-primary shrink-0" />
           <h2 id="cookie-banner-title" className="font-semibold text-lg sm:text-xl">

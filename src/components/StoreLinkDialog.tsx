@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { CheckIcon, CopyIcon } from "lucide-react"
+import { CheckIcon, ClipboardDocumentIcon } from "@heroicons/react/24/outline"
 import {
   Dialog,
   DialogContent,
@@ -54,7 +54,7 @@ export function StoreLinkDialog({ open, onOpenChange, href, strings }: StoreLink
             </>
           ) : (
             <>
-              <CopyIcon className="size-4" />
+              <ClipboardDocumentIcon className="size-4" />
               {strings.copy}
             </>
           )}

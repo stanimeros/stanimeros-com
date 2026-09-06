@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedDataDeletion from '@/page-content/DataDeletion.localized'
+import { dataDeletionAppSeo } from '@/i18n/seo'
 
 export function getStaticPaths() {
   const appSlugs = ['atpro-partner', 'e-karotsi', 'ski-greece', 'fire-message', 'chronal', 'nourea', 'party', 'statwise']
@@ -8,14 +9,9 @@ export function getStaticPaths() {
 }
 
 const { appSlug } = Astro.params
+const s = dataDeletionAppSeo('en', appSlug)
 ---
 
-<BaseLayout
-  lang="en"
-  title={`Data Deletion – ${appSlug} | Pantelis Stanimeros`}
-  description="Request deletion of your data from apps and services by Pantelis Stanimeros."
-  canonical={`https://stanimeros.com/data-deletion/${appSlug}`}
-  noindex
->
+<BaseLayout lang="en" {...s}>
   <LocalizedDataDeletion lang="en" appSlug={appSlug} client:load />
 </BaseLayout>

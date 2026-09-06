@@ -2,23 +2,12 @@
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedHero from '@/page-content/Hero.localized'
 import LocalizedHomeSections from '@/page-content/HomeSections.localized'
-import { professionalServiceJsonLd, homeFaqJsonLd } from '@/lib/jsonld'
+import { seo } from '@/i18n/seo'
+
+const s = seo.home.el
 ---
 
-<BaseLayout
-  lang="el"
-  title="Ιστοσελίδες & Εφαρμογές από €350 | Pantelis Stanimeros"
-  description="Μηχανικός λογισμικού στη Θεσσαλονίκη. Ιστοσελίδες από €350, εφαρμογές από €950, AI αυτοματισμοί με προσαρμοσμένη προσφορά. Απαντάμε εντός 2 ωρών."
-  keywords="κατασκευή ιστοσελίδων Θεσσαλονίκη, κατασκευή εφαρμογών Θεσσαλονίκη, AI αυτοματισμοί επιχειρήσεων, ανάπτυξη mobile εφαρμογών Ελλάδα, κατασκευή eshop, μηχανικός λογισμικού Ελλάδα"
-  canonical="https://stanimeros.com/el"
-  preloadImage="/images/logo-glass.webp"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/' },
-  ]}
-  jsonLd={[professionalServiceJsonLd, homeFaqJsonLd]}
->
+<BaseLayout lang="el" {...s}>
   <LocalizedHero lang="el" client:load />
   <LocalizedHomeSections lang="el" client:visible />
 </BaseLayout>

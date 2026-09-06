@@ -2,6 +2,7 @@
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedProjectDetail from '@/page-content/ProjectDetail.localized'
 import { projectItems, keyToSlug } from '@/lib/projects-data'
+import { projectDetailSeo } from '@/i18n/seo'
 import elMain from '@/i18n/locales/el/main.json'
 
 export function getStaticPaths() {
@@ -14,18 +15,9 @@ export function getStaticPaths() {
 const { item } = Astro.props
 const { slug } = Astro.params
 const copy = (elMain.projects?.items as Record<string, { title: string; description: string }> | undefined)?.[item.key]
+const s = projectDetailSeo('el', slug, copy?.title ?? item.key, copy?.description ?? '')
 ---
 
-<BaseLayout
-  lang="el"
-  title={`${copy?.title ?? item.key} | Pantelis Stanimeros`}
-  description={copy?.description ?? ''}
-  canonical={`https://stanimeros.com/el/projects/${slug}`}
-  hreflangAlternates={[
-    { hreflang: 'en', href: `https://stanimeros.com/projects/${slug}` },
-    { hreflang: 'el', href: `https://stanimeros.com/el/projects/${slug}` },
-    { hreflang: 'x-default', href: `https://stanimeros.com/projects/${slug}` },
-  ]}
->
+<BaseLayout lang="el" {...s}>
   <LocalizedProjectDetail lang="el" slug={slug} client:load />
 </BaseLayout>

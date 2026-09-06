@@ -1,19 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedAbout from '@/page-content/About.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.about.en
 ---
 
-<BaseLayout
-  lang="en"
-  title="About | Pantelis Stanimeros"
-  description="Software engineer in Thessaloniki, Greece, with a background in Computer Science and an MSc in AI & Data Analytics. Building AI automation, apps, and optimization systems."
-  canonical="https://stanimeros.com/about"
-  preloadImage="/images/pantelis.webp"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/about' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el/about' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/about' },
-  ]}
->
+<BaseLayout lang="en" {...s}>
   <LocalizedAbout lang="en" client:load />
 </BaseLayout>

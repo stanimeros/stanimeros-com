@@ -1,20 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedServices from '@/page-content/Services.localized'
-import { servicesOfferJsonLd } from '@/lib/jsonld'
+import { seo } from '@/i18n/seo'
+
+const s = seo.services.en
 ---
 
-<BaseLayout
-  lang="en"
-  title="Services & Pricing | Websites From €350, Apps From €950"
-  description="Websites, apps & dashboards, and AI automation & optimization systems. Clear pricing from €350, custom quotes for AI work. Based in Thessaloniki, Greece."
-  canonical="https://stanimeros.com/services"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/services' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el/services' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/services' },
-  ]}
-  jsonLd={[servicesOfferJsonLd]}
->
+<BaseLayout lang="en" {...s}>
   <LocalizedServices lang="en" client:load />
 </BaseLayout>

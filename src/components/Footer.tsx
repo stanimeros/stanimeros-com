@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next"
+import { MutedLink } from "@/components/ui/section"
 
 const Footer = () => {
   const { t, i18n } = useTranslation()
@@ -14,12 +15,12 @@ const Footer = () => {
             <div className="text-xs">GEMI: 183133106000</div>
           </div>
           <div className="flex flex-col md:flex-row items-center gap-2 md:gap-6">
-            <a href={`${prefix}/privacy-policy`} className="text-muted-foreground hover:text-primary transition-colors">
+            <MutedLink href={`${prefix}/privacy-policy`}>
               {t('footer.links.privacy')}
-            </a>
-            <a href={`${prefix}/data-deletion`} className="text-muted-foreground hover:text-primary transition-colors">
+            </MutedLink>
+            <MutedLink href={`${prefix}/data-deletion`}>
               {t('footer.links.dataDeletion')}
-            </a>
+            </MutedLink>
           </div>
         </div>
       </div>

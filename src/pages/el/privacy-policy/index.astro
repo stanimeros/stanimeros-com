@@ -1,14 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedPrivacyPolicy from '@/page-content/PrivacyPolicy.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.privacyPolicy.el
 ---
 
-<BaseLayout
-  lang="el"
-  title="Πολιτική Απορρήτου | Pantelis Stanimeros"
-  description="Πολιτική απορρήτου για εφαρμογές και υπηρεσίες του Pantelis Stanimeros."
-  canonical="https://stanimeros.com/el/privacy-policy"
-  noindex
->
+<BaseLayout lang="el" {...s}>
   <LocalizedPrivacyPolicy lang="el" client:load />
 </BaseLayout>

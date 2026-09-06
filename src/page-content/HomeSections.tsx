@@ -1,12 +1,12 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { motion, type HTMLMotionProps } from "framer-motion"
+import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ProjectCard } from "@/components/ProjectCard"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { Section, SectionHeading } from "@/components/ui/section"
 import {
   EnvelopeIcon,
   MapPinIcon,
@@ -25,6 +25,7 @@ import {
   PhoneIcon,
   CalendarDaysIcon,
   GlobeAltIcon,
+  BriefcaseIcon,
 } from "@heroicons/react/24/outline"
 const GitHubCalendarComponent = lazy(() => import("@/components/GitHubCalendar"))
 import WhySection from "@/components/WhySection"
@@ -34,7 +35,10 @@ import { ContactChannels } from "@/components/ContactChannels"
 import { trackEvent } from "@/lib/events"
 import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
 import { projectItems, keyToSlug, type ProjectItem } from "@/lib/projects-data"
-import { FacebookIcon, InstagramIcon, LinkedinIcon, GithubIcon, BriefcaseIcon } from "lucide-react"
+// Facebook/Instagram/LinkedIn/GitHub brand marks have no @heroicons/react
+// equivalent (heroicons is a generic UI icon set, not a brand-icon set), so
+// these four keep their lucide-react imports as an intentional exception.
+import { FacebookIcon, InstagramIcon, LinkedinIcon, GithubIcon } from "lucide-react"
 
 interface HomeSectionsProps {
   lang: "en" | "el"
@@ -96,19 +100,9 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
   return (
     <>
       {/* About Section */}
-      <motion.section 
-        ref={aboutRef}
-        id="about" 
-        className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-        {...(aboutAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={aboutRef} id="about" shaded {...aboutAnimation}>
         <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <UserIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t('about.title')}
-            </h2>
-            <Separator className="w-24 mx-auto" />
-          </div>
+          <SectionHeading icon={UserIcon} title={t('about.title')} />
           <div className="grid md:grid-cols-2 gap-12 items-start">
             <div>
               <h3 className="text-2xl font-semibold mb-4">{t('about.name')}</h3>
@@ -159,7 +153,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
             </p>
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       <WhySection />
 
@@ -168,15 +162,9 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
         ref={servicesRef}
         id="services" 
         className="p-10 pb-20 scroll-mt-10 overflow-hidden"
-        {...(servicesAnimation as HTMLMotionProps<"section">)}>
+        {...servicesAnimation}>
         <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <WrenchScrewdriverIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t('services.title')}
-            </h2>
-            <Separator className="w-24 mx-auto" />
-          </div>
+          <SectionHeading icon={WrenchScrewdriverIcon} title={t('services.title')} />
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
             {[
               {
@@ -234,22 +222,18 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
         ref={packagesRef}
         id="packages" 
         className="py-10 pb-20 scroll-mt-10 overflow-hidden"
-        {...(packagesAnimation as HTMLMotionProps<"section">)}>
+        {...packagesAnimation}>
         <div className="mx-auto px-4 max-w-[1600px]">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <CubeTransparentIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t('packages.title')}
-            </h2>
-            <p className="text-muted-foreground max-w-3xl mx-auto">
-              {t('packages.subtitle')}
-            </p>
-            <Separator className="w-24 mx-auto mt-4" />
+          <SectionHeading
+            icon={CubeTransparentIcon}
+            title={t('packages.title')}
+            subtitle={<p className="text-muted-foreground max-w-3xl mx-auto">{t('packages.subtitle')}</p>}
+          >
             <div className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-full bg-primary/10 border border-primary/30 text-primary font-medium text-sm">
               <ClockIcon className="size-4" />
               {t('packages.footer')}
             </div>
-          </div>
+          </SectionHeading>
 
           <div className="grid md:grid-cols-3 gap-8 w-full">
             {[
@@ -447,19 +431,13 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
       <Testimonials />
 
       {/* Projects Section */}
-      <motion.section
-        ref={projectsRef}
-        className="py-20 bg-card/70 scroll-mt-10 overflow-hidden"
-        {...(projectsAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={projectsRef} shaded {...projectsAnimation}>
         <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <BriefcaseIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t("projects.title")}
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">{t("projects.subtitle")}</p>
-            <Separator className="w-24 mx-auto mt-4" />
-          </div>
+          <SectionHeading
+            icon={BriefcaseIcon}
+            title={t("projects.title")}
+            subtitle={<p className="text-muted-foreground max-w-2xl mx-auto">{t("projects.subtitle")}</p>}
+          />
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
             {featuredProjectItems.map((item, index) => (
               <motion.div
@@ -493,25 +471,16 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
             </Button>
           </div>
         </div>
-      </motion.section>
+      </Section>
 
       {/* Contact Section */}
-      <motion.section 
-        ref={contactRef}
-        id="contact" 
-        className="py-20 scroll-mt-10 overflow-hidden"
-        {...(contactAnimation as HTMLMotionProps<"section">)}>
+      <Section ref={contactRef} id="contact" {...contactAnimation}>
         <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4 text-center">
-              <PhoneIcon className="inline-block size-8 text-primary align-middle mr-2 -mt-1" />
-              {t('contact.title')}
-            </h2>
-            <p className="text-foreground font-medium max-w-2xl mx-auto">
-              {t('contact.description')}
-            </p>
-            <Separator className="w-24 mx-auto mt-4" />
-          </div>
+          <SectionHeading
+            icon={PhoneIcon}
+            title={t('contact.title')}
+            subtitle={<p className="text-foreground font-medium max-w-2xl mx-auto">{t('contact.description')}</p>}
+          />
           <div className="flex flex-col items-center gap-12 max-w-3xl mx-auto">
             <div className="grid md:grid-cols-3 gap-4 w-full">
               <div className="flex items-start space-x-3 p-4 rounded-lg bg-card/70 border border-border/60">
@@ -592,7 +561,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
             </div>
           </div>
         </div>
-      </motion.section>
+      </Section>
     </>
   )
 }

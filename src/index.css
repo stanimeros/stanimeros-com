@@ -41,6 +41,8 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  /* Shared floating-panel shadow (chat widget, cookie banner, etc). */
+  --shadow-floating: 0 16px 50px rgba(0, 0, 0, 0.45);
 }
 
 h1, h2, h3, h4, h5, h6 {

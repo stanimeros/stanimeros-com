@@ -451,7 +451,7 @@ const DataDeletion = ({ appSlug, lang }: DataDeletionProps) => {
                     </>
                   ) : (
                     <>
-                      <Trash2 className="size-5 mr-2" />
+                      <Trash2 className="size-5 mr-2 stroke-[1.5]" />
                       {t('dataDeletion.form.submit')}
                     </>
                   )}

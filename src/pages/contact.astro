@@ -1,18 +1,11 @@
 ---
 import BaseLayout from '@/layouts/BaseLayout.astro'
 import LocalizedContact from '@/page-content/Contact.localized'
+import { seo } from '@/i18n/seo'
+
+const s = seo.contact.en
 ---
 
-<BaseLayout
-  lang="en"
-  title="Contact | Pantelis Stanimeros"
-  description="Book a free strategy call to discuss your app, AI automation, or business problem. Based in Thessaloniki, Greece. Response within 2 hours."
-  canonical="https://stanimeros.com/contact"
-  hreflangAlternates={[
-    { hreflang: 'en', href: 'https://stanimeros.com/contact' },
-    { hreflang: 'el', href: 'https://stanimeros.com/el/contact' },
-    { hreflang: 'x-default', href: 'https://stanimeros.com/contact' },
-  ]}
->
+<BaseLayout lang="en" {...s}>
   <LocalizedContact lang="en" client:load />
 </BaseLayout>
