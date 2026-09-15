@@ -1,4 +1,4 @@
-import { useRef } from "react"
+import { useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Card, CardContent } from "@/components/ui/card"
 import { Section, SectionHeading } from "@/components/ui/section"
@@ -7,12 +7,24 @@ import { ChatBubbleLeftRightIcon } from "@heroicons/react/24/outline"
 import { StarIcon, CheckBadgeIcon } from "@heroicons/react/24/solid"
 import GoogleLogo from "@/components/icons/GoogleLogo"
 
-const quoteKeys = ["first", "second", "third", "fourth", "fifth", "sixth"] as const
+const quoteKeys = [
+  "first",
+  "second",
+  "third",
+  "fourth",
+  "fifth",
+  "sixth",
+  "seventh",
+  "eighth",
+  "ninth",
+  "tenth",
+] as const
 
 export default function Testimonials() {
   const { t } = useTranslation()
   const sectionRef = useRef<HTMLElement>(null)
   const animation = useScrollAnimation(sectionRef)
+  const [paused, setPaused] = useState(false)
 
   const cards = quoteKeys.map((key) => {
     const rating = Number(t(`testimonials.quotes.${key}.rating`))
@@ -61,8 +73,18 @@ export default function Testimonials() {
           subtitle={<p className="text-muted-foreground max-w-2xl mx-auto">{t("testimonials.subtitle")}</p>}
         />
 
-        <div className="group relative w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]">
-          <div className="flex w-max gap-6 animate-testimonial-marquee group-hover:[animation-play-state:paused]">
+        <div
+          className="relative w-full overflow-x-auto touch-pan-x scrollbar-hide [mask-image:linear-gradient(to_right,transparent,black_10%,black_90%,transparent)]"
+          onMouseEnter={() => setPaused(true)}
+          onMouseLeave={() => setPaused(false)}
+          onTouchStart={() => setPaused(true)}
+          onTouchEnd={() => setPaused(false)}
+          onTouchCancel={() => setPaused(false)}
+        >
+          <div
+            className="flex w-max gap-6 animate-testimonial-marquee"
+            style={paused ? { animationPlayState: "paused" } : undefined}
+          >
             {cards}
             {cards.map((card, i) => (
               <div key={i} aria-hidden="true">{card}</div>

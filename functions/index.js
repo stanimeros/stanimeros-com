@@ -16,7 +16,9 @@ const {
 
 setGlobalOptions({ maxInstances: 10, region: "europe-west1" });
 
-const CHAT_TIMEOUT_MINUTES = 15;
+// How long a conversation must sit quiet before we email about it — bookings
+// skip this entirely and get their own email immediately (see sendBookingEmail).
+const CONVERSATION_REPORT_DELAY_MINUTES = 30;
 const MAX_TOOL_ROUNDS = 3;
 const MAX_MESSAGE_LENGTH = 2000;
 
@@ -63,31 +65,43 @@ function formatDuration(ms) {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-// One email per day covering every conversation that ended since the last
-// report, with conversion stats up top and each transcript below.
-async function sendAgentReport(sessions) {
-  const converted = sessions.filter((s) => s.booked).length;
-  const notConverted = sessions.length - converted;
-
-  const subject = `Agent report: ${sessions.length} conversation${sessions.length === 1 ? "" : "s"}, ${converted} booked`;
-
-  const sections = sessions
-    .map(({ id, history, booked, durationMs }) => `
-        <h3>${booked ? "✅ Booked" : "— Not booked"} — Session: ${escapeHtml(id)}</h3>
-        <p><strong>Duration:</strong> ${escapeHtml(formatDuration(durationMs))} · <strong>Messages:</strong> ${history.length}</p>
-        <pre style="white-space: pre-wrap; font-family: inherit;">${formatTranscript(history)}</pre>
-      `)
-    .join("<hr>");
+// Sent immediately when a booking is confirmed, so the owner finds out as
+// soon as it happens rather than waiting for the conversation to go quiet.
+async function sendBookingEmail({ name, email, purpose, startTime, htmlLink, history }) {
+  const subject = `New booking: ${name}`;
 
   await sendOwnerEmail({
     subject,
     html: `
       <h2>${escapeHtml(subject)}</h2>
-      <p><strong>Total conversations:</strong> ${sessions.length}</p>
-      <p><strong>Booked:</strong> ${converted}</p>
-      <p><strong>Talked but didn't book:</strong> ${notConverted}</p>
+      <p><strong>Name:</strong> ${escapeHtml(name)}</p>
+      <p><strong>Email:</strong> ${escapeHtml(email)}</p>
+      <p><strong>Purpose:</strong> ${escapeHtml(purpose)}</p>
+      <p><strong>When:</strong> ${escapeHtml(startTime)}</p>
+      ${htmlLink ? `<p><a href="${htmlLink}">View in Google Calendar</a></p>` : ""}
       <hr>
-      ${sections}
+      <pre style="white-space: pre-wrap; font-family: inherit;">${formatTranscript(history)}</pre>
+    `,
+  });
+}
+
+// Sent per-conversation, once it's been quiet for CONVERSATION_REPORT_DELAY_MINUTES,
+// for conversations that did NOT end in a booking (booked ones already got an
+// email immediately and are marked reported right away, so they don't reach here
+// under normal operation).
+async function sendConversationEmail({ id, history, booked, durationMs }) {
+  const subject = booked
+    ? `Conversation ended — booked (${formatDuration(durationMs)})`
+    : `Conversation ended — no booking (${formatDuration(durationMs)})`;
+
+  await sendOwnerEmail({
+    subject,
+    html: `
+      <h2>${escapeHtml(subject)}</h2>
+      <p><strong>Session:</strong> ${escapeHtml(id)}</p>
+      <p><strong>Duration:</strong> ${escapeHtml(formatDuration(durationMs))} · <strong>Messages:</strong> ${history.length}</p>
+      <hr>
+      <pre style="white-space: pre-wrap; font-family: inherit;">${formatTranscript(history)}</pre>
     `,
   });
 }
@@ -154,7 +168,11 @@ exports.geminiChat = onCall({ enforceAppCheck: true }, async (request) => {
       if (!call) break;
 
       const result = await runTool(call, undefined, formatTranscript(history));
-      if (call.name === "createBooking" && !result.error) bookingConfirmed = true;
+      if (call.name === "createBooking" && !result.error) {
+        bookingConfirmed = true;
+        const { name, email, purpose, startTime } = /** @type {any} */ (call.args);
+        await sendBookingEmail({ name, email, purpose, startTime, htmlLink: result.htmlLink, history });
+      }
 
       // Push the model's actual returned content, not a hand-built
       // { functionCall } part — the real part also carries a thoughtSignature
@@ -177,7 +195,10 @@ exports.geminiChat = onCall({ enforceAppCheck: true }, async (request) => {
     await appendMessage(sessionId, { role: "model", text: reply });
 
     if (bookingConfirmed) {
+      // Mark reported too — the booking email already went out above, so the
+      // periodic sweep shouldn't send a second email once this goes quiet.
       await markBooked(sessionId);
+      await markReported(sessionId);
     }
 
     return { reply };
@@ -187,37 +208,36 @@ exports.geminiChat = onCall({ enforceAppCheck: true }, async (request) => {
   }
 });
 
-// Once a day, reports on every conversation that went quiet since the last
-// report (whether it converted to a booking or not) in a single digest email
-// with conversion stats. Sessions are marked reported so nothing appears
-// twice; no email at all if there's nothing new.
+// Runs once a day and emails about each conversation that's been quiet for
+// CONVERSATION_REPORT_DELAY_MINUTES and hasn't been reported yet — one email
+// per conversation rather than a single bundled digest. Booked conversations
+// are normally marked reported immediately (see geminiChat) and so don't
+// reach this sweep; it still handles them here as a fallback in case that
+// email failed to send.
 exports.agentReport = onSchedule(
   { schedule: "0 9 * * *", timeZone: "Europe/Athens" },
   async () => {
-    const staleBefore = new Date(Date.now() - CHAT_TIMEOUT_MINUTES * 60 * 1000);
+    const staleBefore = new Date(Date.now() - CONVERSATION_REPORT_DELAY_MINUTES * 60 * 1000);
     const staleSessions = await getSessionsToReport(staleBefore);
 
-    const reportedSessions = [];
+    let reportedCount = 0;
     for (const session of staleSessions) {
       const history = await getHistory(session.id);
       if (history.length > 0) {
         const first = history[0].createdAt?.toMillis?.() ?? Date.now();
         const last = history[history.length - 1].createdAt?.toMillis?.() ?? first;
-        reportedSessions.push({
+        await sendConversationEmail({
           id: session.id,
           history,
           booked: !!(/** @type {any} */ (session).booked),
           durationMs: last - first,
         });
+        reportedCount += 1;
       }
       await markReported(session.id);
     }
 
-    if (reportedSessions.length > 0) {
-      await sendAgentReport(reportedSessions);
-    }
-
-    logger.info(`Agent report covered ${reportedSessions.length} conversation(s)`);
+    logger.info(`Agent report covered ${reportedCount} conversation(s)`);
   }
 );
 

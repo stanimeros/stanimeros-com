@@ -58,6 +58,15 @@ h1, h2, h3, h4, h5, h6 {
   animation: testimonial-marquee 90s linear infinite;
 }
 
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(0.145 0 0);
@@ -139,4 +148,13 @@ h1, h2, h3, h4, h5, h6 {
 [data-scroll-locked][data-scroll-locked] {
   overflow-y: auto !important;
   margin-right: 0 !important;
+}
+
+.github-calendar-container {
+  max-width: 100%;
+}
+
+.github-calendar-container svg {
+  width: 100%;
+  height: auto;
 }

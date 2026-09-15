@@ -562,6 +562,30 @@
         "quote": "An excellent developer and professional in every way. From the very first moment he guided me, with constant communication throughout the build of my e-shop. Flawless collaboration, very happy with the result, I recommend him.",
         "attribution": "Stelios T.",
         "rating": 5
+      },
+      "seventh": {
+        "title": "Exactly the app I needed",
+        "quote": "Pantelis is an excellent development partner! He delivered a fairly demanding and complex app, exactly as I needed it. Very cooperative, patient, and always ready to find solutions. I recommend him without hesitation.",
+        "attribution": "John P.",
+        "rating": 5
+      },
+      "eighth": {
+        "title": "Fast and reliable",
+        "quote": "Excellent work, he helped us incredibly fast! Tasks that needed to be done urgently to keep production moving were finished quickly, letting us keep working.",
+        "attribution": "Iordanis E.",
+        "rating": 5
+      },
+      "ninth": {
+        "title": "The ideal partner for our platform",
+        "quote": "We couldn't have asked for a better partner to bring our platform to life! Pantelis immediately understood what we wanted and suggested ideas that elevated the result. Flawless communication, with quick responses to every change.",
+        "attribution": "Georgia T.",
+        "rating": 5
+      },
+      "tenth": {
+        "title": "From a first project to a lasting partnership",
+        "quote": "We worked together to build a complete platform for the tattoo industry. With no prior experience in the field, he studied it closely and truly understood our needs. After the first project we continued working together long-term. I recommend him without hesitation.",
+        "attribution": "Miltiadis T.",
+        "rating": 5
       }
     }
   },
