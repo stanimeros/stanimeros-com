@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import * as GitHubCalendarModule from 'react-github-calendar'
 
 // react-github-calendar ships CJS-only; depending on how the bundler wraps
@@ -20,14 +21,48 @@ interface GitHubCalendarProps {
 }
 
 const GitHubCalendarComponent = ({ username, className = "" }: GitHubCalendarProps) => {
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [scale, setScale] = useState(1)
+  const [contentHeight, setContentHeight] = useState<number | null>(null)
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    const content = contentRef.current
+    if (!wrapper || !content) return
+
+    const update = () => {
+      const naturalWidth = content.scrollWidth
+      const naturalHeight = content.scrollHeight
+      if (!naturalWidth || !naturalHeight) return
+      const availableWidth = wrapper.clientWidth
+      setScale(Math.min(1, availableWidth / naturalWidth))
+      setContentHeight(naturalHeight)
+    }
+
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(wrapper)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <div className={`github-calendar-container ${className}`}>
-      <GitHubCalendar
-        username={username}
-        colorScheme="dark"
-        showWeekdayLabels={true}
-        hideTotalCount={true}
-      />
+    <div
+      ref={wrapperRef}
+      className={`github-calendar-container ${className}`}
+      style={contentHeight ? { height: contentHeight * scale } : undefined}
+    >
+      <div
+        ref={contentRef}
+        style={{ display: 'inline-block', transform: `scale(${scale})`, transformOrigin: 'top left' }}
+      >
+        <GitHubCalendar
+          username={username}
+          colorScheme="dark"
+          showWeekdayLabels={true}
+          hideTotalCount={true}
+        />
+      </div>
     </div>
   )
 }
