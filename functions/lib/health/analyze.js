@@ -158,19 +158,40 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
 
 // --- per-entity findings --------------------------------------------------
 
-function analyzeEntities(projectId, breakdowns, cfg, findings) {
+/**
+ * Per-function/-service findings. `breakdowns` is the history (median
+ * baseline, same complete-prior-UTC-days window as the project metrics);
+ * `rollingBreakdowns` is the rolling-last-24h "now" -- same split as
+ * analyzeMetric, and for the same reason: a Cloud Console reader comparing
+ * "last 24h" against this dashboard's per-function calls must see the same
+ * number, not whatever the newest complete UTC day happened to be.
+ */
+function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings) {
   const entities = [];
+  const kinds = new Set([...Object.keys(breakdowns || {}), ...Object.keys(rollingBreakdowns || {})]);
 
-  for (const [kind, byName] of Object.entries(breakdowns)) {
-    for (const [name, data] of Object.entries(byName)) {
+  for (const kind of kinds) {
+    const byName = (breakdowns || {})[kind] || {};
+    const rollingByName = (rollingBreakdowns || {})[kind] || {};
+    const names = new Set([...Object.keys(byName), ...Object.keys(rollingByName)]);
+
+    for (const name of names) {
+      const data = byName[name] || { calls: {}, errors: {} };
+      const rollingData = rollingByName[name] || { calls: {}, errors: {} };
+
       const days = [...new Set([...Object.keys(data.calls), ...Object.keys(data.errors)])].sort();
-      if (!days.length) continue;
-
       const calls = days.map((d) => data.calls[d] || 0);
       const errors = days.map((d) => data.errors[d] || 0);
-      const callsNow = calls[calls.length - 1];
-      const errorsNow = errors[errors.length - 1];
-      const callsBaseline = calls.length > 1 ? median(calls.slice(0, -1)) : 0;
+      const callsBaseline = calls.length ? median(calls) : 0;
+
+      // Rolling 24h "now" -- summed across whatever day key(s) the window
+      // straddles, same reasoning as analyzeMetric's rollingData handling.
+      const callsNow = Object.values(rollingData.calls || {}).reduce((a, b) => a + b, 0);
+      const errorsNow = Object.values(rollingData.errors || {}).reduce((a, b) => a + b, 0);
+
+      // Nothing in either window -- this name simply isn't active.
+      if (!days.length && !callsNow && !errorsNow) continue;
+
       const errorRate = callsNow ? errorsNow / callsNow : 0;
 
       entities.push({
@@ -191,21 +212,21 @@ function analyzeEntities(projectId, breakdowns, cfg, findings) {
           key: findingKey(projectId, `${kind} errors`, name),
           level: errorRate >= 0.25 ? "critical" : "warn",
           kind: `${kind} errors`,
-          text: `${name}: ${formatValue(errorsNow)} failed of ${formatValue(callsNow)} calls (${Math.round(errorRate * 100)}%)`,
+          text: `${name}: ${formatValue(errorsNow)} failed of ${formatValue(callsNow)} calls over the last 24h (${Math.round(errorRate * 100)}%)`,
         });
       } else if (callsNow === 0 && callsBaseline >= cfg.spikeFloor) {
         findings.push({
           key: findingKey(projectId, `${kind} silent`, name),
           level: "warn",
           kind: `${kind} silent`,
-          text: `${name}: no calls in the last full day (baseline ${formatValue(callsBaseline)}/day)`,
+          text: `${name}: no calls in the last 24h (baseline ${formatValue(callsBaseline)}/day)`,
         });
       } else if (callsNow >= cfg.spikeFloor && callsBaseline > 0 && callsNow / callsBaseline >= cfg.spikeRatio) {
         findings.push({
           key: findingKey(projectId, `${kind} spike`, name),
           level: "warn",
           kind: `${kind} spike`,
-          text: `${name}: ${formatValue(callsNow)} calls vs baseline ${formatValue(callsBaseline)} (${(callsNow / callsBaseline).toFixed(1)}x)`,
+          text: `${name}: ${formatValue(callsNow)} calls vs baseline ${formatValue(callsBaseline)} over the last 24h (${(callsNow / callsBaseline).toFixed(1)}x)`,
         });
       }
     }
@@ -305,6 +326,7 @@ function analyzeProject({
   metricData,
   rollingMetricData,
   breakdowns,
+  rollingBreakdowns,
   log,
   cost,
   cfg,
@@ -319,7 +341,7 @@ function analyzeProject({
   // both metric names) before spike/stall/failure checks run on it --
   // otherwise the same real traffic produces two findings for one event. See
   // analyzeMetric's `suppressFindings`.
-  const { entities, shadowedCalls } = analyzeEntities(project.id, breakdowns, cfg, findings);
+  const { entities, shadowedCalls } = analyzeEntities(project.id, breakdowns, rollingBreakdowns, cfg, findings);
 
   for (const spec of metricSpecs) {
     const historyData = metricData[spec.key];

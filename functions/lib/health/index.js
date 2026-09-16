@@ -68,12 +68,18 @@ async function collect(project, token, cfg) {
     throw err;
   }
 
+  // Same history/rolling split as the metrics above, and for the same
+  // reason: a per-function "now" must match what Cloud Console's own "last
+  // 24 hours" shows, not whatever the newest complete UTC day happened to be.
   const breakdowns = {};
+  const rollingBreakdowns = {};
   try {
-    const parts = await Promise.all(
-      BREAKDOWNS.map((spec) => breakdown(project.id, spec, historyStart, historyEnd, token))
-    );
-    BREAKDOWNS.forEach((spec, i) => { breakdowns[spec.kind] = parts[i]; });
+    const [historyParts, rollingParts] = await Promise.all([
+      Promise.all(BREAKDOWNS.map((spec) => breakdown(project.id, spec, historyStart, historyEnd, token))),
+      Promise.all(BREAKDOWNS.map((spec) => breakdown(project.id, spec, rollingStart, rollingEnd, token))),
+    ]);
+    BREAKDOWNS.forEach((spec, i) => { breakdowns[spec.kind] = historyParts[i]; });
+    BREAKDOWNS.forEach((spec, i) => { rollingBreakdowns[spec.kind] = rollingParts[i]; });
   } catch (err) {
     err.stage = "breakdown";
     throw err;
@@ -90,7 +96,7 @@ async function collect(project, token, cfg) {
   // by project -- it must not be able to take the rest of the sweep down.
   const iam = await collectIam(project.id, token);
 
-  return { metricData, rollingMetricData, breakdowns, log, iam };
+  return { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam };
 }
 
 async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
@@ -108,13 +114,18 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
   const results = await mapWithLimit(projects, CONCURRENCY, async (project) => {
     const projectCfg = thresholdsFor(project.id);
     try {
-      const { metricData, rollingMetricData, breakdowns, log, iam } = await collect(project, token, projectCfg);
+      const { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam } = await collect(
+        project,
+        token,
+        projectCfg
+      );
       return analyzeProject({
         project,
         metricSpecs: METRICS,
         metricData,
         rollingMetricData,
         breakdowns,
+        rollingBreakdowns,
         log,
         cost: (costs && costs[project.id]) || null,
         cfg: projectCfg,

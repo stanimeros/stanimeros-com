@@ -20,6 +20,7 @@ function baseArgs(overrides) {
     metricSpecs: [],
     metricData: {},
     breakdowns: {},
+    rollingBreakdowns: {},
     log: { count: null, truncated: false, kinds: {}, sources: {}, top: [] },
     cost: null,
     cfg: cfg(),
@@ -223,12 +224,41 @@ test("entities are capped at LIMITS.entitiesPerProject while entitiesTotal recor
   assert.equal(result.entitiesTotal, 40);
 });
 
+test("an entity's calls reflect the rolling last-24h window, not the newest historical day -- matching what Cloud Console's own 'last 24 hours' shows", () => {
+  // A function with real historical traffic (113 calls/day) but genuinely
+  // zero calls in the rolling last 24h must show calls: 0, not 113 -- the
+  // exact dashboard-vs-Console mismatch this test guards against.
+  const breakdowns = {
+    function: { adminGetClient: { calls: { "2026-08-30": 113, "2026-08-31": 113 }, errors: {} } },
+  };
+  const rollingBreakdowns = {
+    function: { adminGetClient: { calls: {}, errors: {} } }, // zero calls today
+  };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns }));
+  const entity = result.entities.find((e) => e.name === "adminGetClient");
+  assert.ok(entity);
+  assert.equal(entity.calls, 0);
+  assert.equal(entity.callsBaseline, 113);
+});
+
+test("an entity's rolling calls sum across every day key the window straddles, same as a project metric's", () => {
+  const breakdowns = { function: { fn: { calls: { "2026-08-30": 10 }, errors: {} } } };
+  const rollingBreakdowns = {
+    function: { fn: { calls: { "2026-09-15": 60, "2026-09-16": 40 }, errors: {} } }, // 100 total
+  };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns }));
+  const entity = result.entities.find((e) => e.name === "fn");
+  assert.equal(entity.calls, 100);
+});
+
 test("run.requests does not double-report a gen-2 function's own spike under a second metric name", () => {
   // A fully-shadowed project: one function entity, one identically-named run
-  // entity with the same call count -- dropRunShadows removes the run
-  // shadow entirely, so shadowedCalls equals the whole run.requests total.
+  // entity with the same rolling call count -- dropRunShadows removes the
+  // run shadow entirely, so shadowedCalls equals the whole run.requests
+  // total. shadowedCalls is rolling-based (entity.calls), so the shadow data
+  // goes in rollingBreakdowns, not the historical breakdowns.
   const spec = { key: "run.requests", type: "x", kind: "delta" };
-  const breakdowns = {
+  const rollingBreakdowns = {
     function: { getStatistics: { calls: { "2026-09-16": 189 }, errors: {} } },
     run: { getstatistics: { calls: { "2026-09-16": 189 }, errors: {} } },
   };
@@ -237,7 +267,7 @@ test("run.requests does not double-report a gen-2 function's own spike under a s
       metricSpecs: [spec],
       metricData: { "run.requests": historySeries(1) },
       rollingMetricData: { "run.requests": rollingSeries({ "": 189 }) }, // 189x baseline 1 -- would spike
-      breakdowns,
+      rollingBreakdowns,
     })
   );
   assert.equal(result.findings.some((f) => f.kind === "spike"), false);
@@ -245,15 +275,15 @@ test("run.requests does not double-report a gen-2 function's own spike under a s
 });
 
 test("run.requests findings are suppressed project-wide once any shadowing exists, even alongside a standalone Cloud Run service", () => {
-  // A known, accepted limitation: the entity breakdown that detects shadowing
-  // runs on a different (historical) window than the rolling one findings are
-  // based on, so there's no reliable way to subtract just the shadowed
-  // portion -- see analyzeMetric's suppressFindings doc comment. A mixed
-  // project (some shadowed function traffic + a real standalone Run service)
-  // loses run.requests spike detection entirely rather than risk a
-  // mismatched-window number; functions.calls still covers the shadowed part.
+  // A known, accepted limitation: with only one rolling window's worth of
+  // shadow data (no separate per-portion breakdown), there's no reliable way
+  // to subtract just the shadowed part of run.requests' total -- see
+  // analyzeMetric's suppressFindings doc comment. A mixed project (some
+  // shadowed function traffic + a real standalone Run service) loses
+  // run.requests spike detection entirely rather than risk a wrong number;
+  // functions.calls still covers the shadowed part.
   const spec = { key: "run.requests", type: "x", kind: "delta" };
-  const breakdowns = {
+  const rollingBreakdowns = {
     function: { getStatistics: { calls: { "2026-09-16": 50 }, errors: {} } },
     run: {
       getstatistics: { calls: { "2026-09-16": 50 }, errors: {} }, // shadowed, dropped
@@ -265,7 +295,7 @@ test("run.requests findings are suppressed project-wide once any shadowing exist
       metricSpecs: [spec],
       metricData: { "run.requests": historySeries(50) },
       rollingMetricData: { "run.requests": rollingSeries({ "": 450 }) },
-      breakdowns,
+      rollingBreakdowns,
     })
   );
   assert.equal(result.findings.some((f) => f.kind === "spike"), false);
