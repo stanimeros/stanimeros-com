@@ -104,7 +104,7 @@ const DEFAULTS = {
   criticalErrors: 100,  // errors/window at or above this are critical
   freeTierWarn: 0.8,    // warn at 80% of a Spark daily allowance
   baselineDays: 14,
-  logHours: 24,
+  logHours: 48,
   saKeyCriticalDays: 365,  // a downloadable SA key older than this is critical, not just a warn
 };
 
