@@ -273,20 +273,24 @@ const HEALTH_OPTIONS = {
   maxInstances: 1,
 };
 
-// Once a day, not three times: most metric-based findings are scored off
-// *yesterday's* complete UTC day (see monitoring.js windowFor) regardless of
-// how often this runs, so extra scheduled runs on the same day would mostly
-// just re-score the same numbers. The 24h-rolling log findings and the
-// same-day failure-rate check (analyze.js analyzeLiveFailures) do benefit
-// from running more often intraday -- for now that's what "Run now" on the
-// dashboard is for, rather than raising the schedule's frequency and paying
-// for 15 extra Monitoring/Logging sweeps a day estate-wide.
-// 9am Athens gives the UTC day (ends 00:00 UTC = 03:00 Athens) time to settle
-// in Monitoring before the sweep reads it.
+// Three times through the working day (9am/3pm/9pm Athens), not once a
+// day and not overnight: the baseline every metric/entity check compares
+// against is a multi-day median (cfg.baselineDays, see monitoring.js
+// windowFor) that only moves day to day, so a same-day rerun wouldn't
+// change what a spike or stall check is scored against. But the
+// rolling-24h "now" window those same checks (including the failure-rate
+// check inside analyze.js analyzeMetric / analyzeEntities) are scored
+// from, and the log scan's rolling logHours (48h, see config.js) window,
+// both shift with every run -- so three sweeps a day catch a live
+// incident well before a 24h-old one would age out unseen, without paging
+// anyone with a 3am-generated alert. "Run now" on the dashboard still
+// covers anything more urgent than a 6h cadence, or anything overnight.
+// 9am Athens is the anchor: it gives the UTC day (ends 00:00 UTC = 03:00
+// Athens) time to settle in Monitoring before the first sweep reads it.
 exports.healthCheck = onSchedule(
   {
     ...HEALTH_OPTIONS,
-    schedule: "0 9 * * *",
+    schedule: "0 9,15,21 * * *",
     timeZone: "Europe/Athens",
     retryCount: 0,
   },
