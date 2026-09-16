@@ -24,10 +24,28 @@ function baseArgs(overrides) {
     cost: null,
     cfg: cfg(),
     billingAccount: "BILLING-1",
-    liveMetricData: {},
+    rollingMetricData: {},
     iam: null,
     ...overrides,
   };
+}
+
+// History (baseline) data: `days` complete prior UTC days, all the same
+// value, under one unlabelled sub-series.
+function historySeries(baselineValue, days = 14) {
+  const out = {};
+  for (let i = 0; i < days; i++) {
+    out[`2026-08-${String(i + 1).padStart(2, "0")}`] = baselineValue;
+  }
+  return { "": out };
+}
+
+// Rolling (current) data: one bucket per label, collapsed onto a single day
+// key -- a real rolling-24h fetch isn't day-aligned so it may return two day
+// keys for the same label, but summing is what analyzeMetric does either way
+// (see the dedicated multi-day-key test below), so one key is enough here.
+function rollingSeries(labelTotals) {
+  return Object.fromEntries(Object.entries(labelTotals).map(([label, total]) => [label, { "2026-09-16": total }]));
 }
 
 test("median returns the middle value for an odd-length series", () => {
@@ -63,25 +81,13 @@ test("findingKey never embeds a count, ratio, or timestamp, so the same underlyi
 
 test("findingKey is identical across two analyzeProject runs whose spike sizes differ", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
-  const history = [50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50];
-  const dataSmall = {
-    "": Object.fromEntries([
-      ...history.map((v, i) => [`2026-09-${String(i + 1).padStart(2, "0")}`, v]),
-      ["2026-09-14", 200], // 4x baseline, above the spike floor
-    ]),
-  };
-  const dataBig = {
-    "": Object.fromEntries([
-      ...history.map((v, i) => [`2026-09-${String(i + 1).padStart(2, "0")}`, v]),
-      ["2026-09-14", 2000], // 40x baseline, above the spike floor
-    ]),
-  };
+  const history = { "firestore.reads": historySeries(50) };
 
   const resultSmall = analyzeProject(
-    baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": dataSmall } })
+    baseArgs({ metricSpecs: [spec], metricData: history, rollingMetricData: { "firestore.reads": rollingSeries({ "": 200 }) } }) // 4x
   );
   const resultBig = analyzeProject(
-    baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": dataBig } })
+    baseArgs({ metricSpecs: [spec], metricData: history, rollingMetricData: { "firestore.reads": rollingSeries({ "": 2000 }) } }) // 40x
   );
 
   assert.equal(resultSmall.findings.length, 1);
@@ -90,19 +96,18 @@ test("findingKey is identical across two analyzeProject runs whose spike sizes d
   assert.equal(resultSmall.findings[0].key, "proj:spike:firestore.reads");
 });
 
-function seriesWithLatest(baselineValue, latestValue, days = 14) {
-  const out = {};
-  for (let i = 0; i < days - 1; i++) {
-    out[`2026-08-${String(i + 1).padStart(2, "0")}`] = baselineValue;
-  }
-  out["2026-08-31"] = latestValue;
-  return { "": out };
+function spikeArgs(spec, baseline, latest, overrides) {
+  return baseArgs({
+    metricSpecs: [spec],
+    metricData: { [spec.key]: historySeries(baseline) },
+    rollingMetricData: { [spec.key]: rollingSeries({ "": latest }) },
+    ...overrides,
+  });
 }
 
 test("analyzeProject flags a spike at >= 3x baseline over the floor as a warn finding", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
-  const data = seriesWithLatest(100, 350); // 3.5x baseline, floor is 100
-  const result = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": data } }));
+  const result = analyzeProject(spikeArgs(spec, 100, 350)); // 3.5x baseline, floor is 100
   const finding = result.findings.find((f) => f.kind === "spike");
   assert.ok(finding, "expected a spike finding");
   assert.equal(finding.level, "warn");
@@ -110,17 +115,15 @@ test("analyzeProject flags a spike at >= 3x baseline over the floor as a warn fi
 
 test("analyzeProject escalates a spike to critical at >= 6x baseline", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
-  const data = seriesWithLatest(100, 700); // 7x baseline
-  const result = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": data } }));
+  const result = analyzeProject(spikeArgs(spec, 100, 700)); // 7x baseline
   const finding = result.findings.find((f) => f.kind === "spike");
   assert.ok(finding);
   assert.equal(finding.level, "critical");
 });
 
-test("analyzeProject reports a stall when a metric with a real baseline drops to exactly zero", () => {
+test("analyzeProject reports a stall when a metric with a real baseline drops to exactly zero over the rolling 24h", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
-  const data = seriesWithLatest(100, 0);
-  const result = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": data } }));
+  const result = analyzeProject(spikeArgs(spec, 100, 0));
   const finding = result.findings.find((f) => f.kind === "stall");
   assert.ok(finding, "expected a stall finding");
   assert.equal(finding.level, "warn");
@@ -129,49 +132,54 @@ test("analyzeProject reports a stall when a metric with a real baseline drops to
 test("analyzeProject stays quiet on a value below the spike floor even at a huge ratio", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
   // baseline 1, latest 50: ratio is 50x but 50 < spikeFloor (100), so no finding.
-  const data = seriesWithLatest(1, 50);
-  const result = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": data } }));
+  const result = analyzeProject(spikeArgs(spec, 1, 50));
   assert.equal(result.findings.length, 0);
+});
+
+test("analyzeProject sums a rolling window's total across every day key it straddles, not just the newest one", () => {
+  // A real rolling-24h fetch isn't day-aligned, so it can return the same
+  // label split across two UTC-date keys -- summing both is what makes the
+  // total correct, e.g. 250 + 100 = 350, same as if it landed in one bucket.
+  const spec = { key: "firestore.reads", type: "x", kind: "delta" };
+  const straddled = { "": { "2026-09-15": 250, "2026-09-16": 100 } }; // 350 total
+  const result = analyzeProject(
+    baseArgs({
+      metricSpecs: [spec],
+      metricData: { "firestore.reads": historySeries(100) },
+      rollingMetricData: { "firestore.reads": straddled },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "spike");
+  assert.ok(finding, "350 vs baseline 100 is a 3.5x spike");
+  assert.match(finding.text, /350/);
+});
+
+test("a metric absent from both the history and rolling windows produces no metrics entry and no findings", () => {
+  const spec = { key: "firestore.reads", type: "x", kind: "delta" };
+  const result = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: {}, rollingMetricData: {} }));
+  assert.equal(result.findings.length, 0);
+  assert.equal("firestore.reads" in result.metrics, false);
 });
 
 test("Spark quota findings fire at >= 80% of freeDaily and turn critical at >= 100%", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta", freeDaily: 1000 };
 
-  const dataWarn = seriesWithLatest(10, 850); // 85% of freeDaily; baseline too small to spike-trigger normally but will since 850>=100 && 850/10>=3, so isolate quota separately
-  // Use a baseline close to latest to avoid also tripping a spike finding, so we can
-  // assert on the quota finding specifically.
-  const dataWarnOnly = seriesWithLatest(800, 850); // 850/800 < 3 (no spike), 850 >= 100 (would need ratio>=3, not met)
-  const resultWarn = analyzeProject(
-    baseArgs({
-      project: project({ plan: "Spark" }),
-      metricSpecs: [spec],
-      metricData: { "firestore.reads": dataWarnOnly },
-    })
-  );
+  // Baseline close to latest to avoid also tripping a spike finding, so we
+  // can assert on the quota finding specifically.
+  const resultWarn = analyzeProject(spikeArgs(spec, 800, 850, { project: project({ plan: "Spark" }) })); // 85%, no spike
   const quotaWarn = resultWarn.findings.find((f) => f.kind === "quota");
   assert.ok(quotaWarn, "expected a quota finding at 85% usage");
   assert.equal(quotaWarn.level, "warn");
 
-  const dataCritical = seriesWithLatest(950, 1000); // 100% of freeDaily, ratio < 3 so no spike overlap
-  const resultCritical = analyzeProject(
-    baseArgs({
-      project: project({ plan: "Spark" }),
-      metricSpecs: [spec],
-      metricData: { "firestore.reads": dataCritical },
-    })
-  );
+  const resultCritical = analyzeProject(spikeArgs(spec, 950, 1000, { project: project({ plan: "Spark" }) })); // 100%
   const quotaCritical = resultCritical.findings.find((f) => f.kind === "quota");
   assert.ok(quotaCritical, "expected a quota finding at 100% usage");
   assert.equal(quotaCritical.level, "critical");
-  void dataWarn;
 });
 
 test("a Blaze project with the same usage numbers produces no quota finding", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta", freeDaily: 1000 };
-  const data = seriesWithLatest(950, 1000); // would be 100% on Spark
-  const result = analyzeProject(
-    baseArgs({ project: project({ plan: "Blaze" }), metricSpecs: [spec], metricData: { "firestore.reads": data } })
-  );
+  const result = analyzeProject(spikeArgs(spec, 950, 1000, { project: project({ plan: "Blaze" }) })); // would be 100% on Spark
   assert.equal(result.findings.some((f) => f.kind === "quota"), false);
 });
 
@@ -179,14 +187,10 @@ test("byte metrics use the raised 10MB floor instead of the default spikeFloor",
   const spec = { key: "hosting.egress", type: "x", kind: "delta", unit: "bytes" };
   // Latest is well above the default 100-unit floor but far below 10MB, and
   // the ratio is huge (baseline 1 byte) -- must NOT trigger a spike.
-  const smallData = seriesWithLatest(1, 500000); // 500KB, ratio 500000x but under 10MB floor
-  const smallResult = analyzeProject(
-    baseArgs({ metricSpecs: [spec], metricData: { "hosting.egress": smallData } })
-  );
+  const smallResult = analyzeProject(spikeArgs(spec, 1, 500000)); // 500KB, ratio huge but under 10MB floor
   assert.equal(smallResult.findings.some((f) => f.kind === "spike"), false);
 
-  const bigData = seriesWithLatest(1024, 20 * 1024 * 1024); // 20MB, above the 10MB floor and > 3x baseline
-  const bigResult = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: { "hosting.egress": bigData } }));
+  const bigResult = analyzeProject(spikeArgs(spec, 1024, 20 * 1024 * 1024)); // 20MB, above the 10MB floor and > 3x baseline
   assert.equal(bigResult.findings.some((f) => f.kind === "spike"), true);
 });
 
@@ -197,17 +201,11 @@ test("a metric with freeDaily floors at quietFraction of it, so a huge ratio on 
 
   // 804 reads vs a baseline of 4 is a 201x ratio -- exactly the kind of
   // reading that used to fire a warning on a project doing basically nothing.
-  const quietData = seriesWithLatest(4, 804);
-  const quietResult = analyzeProject(
-    baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": quietData } })
-  );
+  const quietResult = analyzeProject(spikeArgs(spec, 4, 804));
   assert.equal(quietResult.findings.some((f) => f.kind === "spike"), false);
 
   // Above the 10000 floor, the same shape of ratio does fire.
-  const realData = seriesWithLatest(40, 12000);
-  const realResult = analyzeProject(
-    baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": realData } })
-  );
+  const realResult = analyzeProject(spikeArgs(spec, 40, 12000));
   assert.equal(realResult.findings.some((f) => f.kind === "spike"), true);
 });
 
@@ -225,6 +223,83 @@ test("entities are capped at LIMITS.entitiesPerProject while entitiesTotal recor
   assert.equal(result.entitiesTotal, 40);
 });
 
+test("run.requests does not double-report a gen-2 function's own spike under a second metric name", () => {
+  // A fully-shadowed project: one function entity, one identically-named run
+  // entity with the same call count -- dropRunShadows removes the run
+  // shadow entirely, so shadowedCalls equals the whole run.requests total.
+  const spec = { key: "run.requests", type: "x", kind: "delta" };
+  const breakdowns = {
+    function: { getStatistics: { calls: { "2026-09-16": 189 }, errors: {} } },
+    run: { getstatistics: { calls: { "2026-09-16": 189 }, errors: {} } },
+  };
+  const result = analyzeProject(
+    baseArgs({
+      metricSpecs: [spec],
+      metricData: { "run.requests": historySeries(1) },
+      rollingMetricData: { "run.requests": rollingSeries({ "": 189 }) }, // 189x baseline 1 -- would spike
+      breakdowns,
+    })
+  );
+  assert.equal(result.findings.some((f) => f.kind === "spike"), false);
+  assert.equal(result.metrics["run.requests"].shadowedCalls, 189);
+});
+
+test("run.requests findings are suppressed project-wide once any shadowing exists, even alongside a standalone Cloud Run service", () => {
+  // A known, accepted limitation: the entity breakdown that detects shadowing
+  // runs on a different (historical) window than the rolling one findings are
+  // based on, so there's no reliable way to subtract just the shadowed
+  // portion -- see analyzeMetric's suppressFindings doc comment. A mixed
+  // project (some shadowed function traffic + a real standalone Run service)
+  // loses run.requests spike detection entirely rather than risk a
+  // mismatched-window number; functions.calls still covers the shadowed part.
+  const spec = { key: "run.requests", type: "x", kind: "delta" };
+  const breakdowns = {
+    function: { getStatistics: { calls: { "2026-09-16": 50 }, errors: {} } },
+    run: {
+      getstatistics: { calls: { "2026-09-16": 50 }, errors: {} }, // shadowed, dropped
+      standaloneApi: { calls: { "2026-09-16": 400 }, errors: {} }, // real, independent traffic
+    },
+  };
+  const result = analyzeProject(
+    baseArgs({
+      metricSpecs: [spec],
+      metricData: { "run.requests": historySeries(50) },
+      rollingMetricData: { "run.requests": rollingSeries({ "": 450 }) },
+      breakdowns,
+    })
+  );
+  assert.equal(result.findings.some((f) => f.kind === "spike"), false);
+  // Still shown for reference in the metrics panel, just not alerted on.
+  assert.equal(result.metrics["run.requests"].latest, 450);
+});
+
+// --- log errors (no floor) --------------------------------------------------
+
+test("a single real error log entry produces a warn finding and a non-ok status -- no floor, unlike the Monitoring-derived checks", () => {
+  const result = analyzeProject(
+    baseArgs({ log: { count: 1, truncated: false, kinds: {}, sources: { "function:x": 1 }, top: [] } })
+  );
+  const finding = result.findings.find((f) => f.kind === "errors");
+  assert.ok(finding, "a single error must not be invisible to findings/status");
+  assert.equal(finding.level, "warn");
+  assert.equal(result.status, "warn");
+});
+
+test("log errors escalate to critical at cfg.criticalErrors", () => {
+  const result = analyzeProject(
+    baseArgs({ log: { count: 100, truncated: false, kinds: {}, sources: {}, top: [] } })
+  );
+  const finding = result.findings.find((f) => f.kind === "errors");
+  assert.equal(finding.level, "critical");
+});
+
+test("log.count: null (log read failed) produces no errors finding -- must not read as zero errors", () => {
+  const result = analyzeProject(
+    baseArgs({ log: { count: null, truncated: false, kinds: {}, sources: {}, top: [] } })
+  );
+  assert.equal(result.findings.some((f) => f.kind === "errors"), false);
+});
+
 test("a project with no findings gets status ok", () => {
   const result = analyzeProject(baseArgs());
   assert.equal(result.status, "ok");
@@ -232,73 +307,87 @@ test("a project with no findings gets status ok", () => {
 
 test("a project with any warn finding gets status warn", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
-  const data = seriesWithLatest(100, 350); // 3.5x -> warn spike
-  const result = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": data } }));
+  const result = analyzeProject(spikeArgs(spec, 100, 350)); // 3.5x -> warn spike
   assert.equal(result.status, "warn");
 });
 
-// --- live-failures (same-day) ----------------------------------------------
+// --- failures (rolling 24h failure rate) ------------------------------------
 
-function liveData(labelBuckets) {
-  // labelBuckets: { label: total } -- collapsed into one same-day bucket.
-  return Object.fromEntries(Object.entries(labelBuckets).map(([label, total]) => [label, { "2026-09-16": total }]));
-}
+const STORAGE_TOTAL = { key: "storage.total", type: "x", kind: "gauge", unit: "bytes" };
+const FUNCTIONS_CALLS = { key: "functions.calls", type: "x", kind: "delta" };
+const RUN_REQUESTS = { key: "run.requests", type: "x", kind: "delta" };
 
-test("analyzeLiveFailures ignores a metric with no configured failure label", () => {
+test("analyzeProject ignores a metric with no configured failure label", () => {
   const result = analyzeProject(
-    baseArgs({ liveMetricData: { "storage.total": liveData({ "": 1000 }) } })
+    baseArgs({ metricSpecs: [STORAGE_TOTAL], rollingMetricData: { "storage.total": rollingSeries({ "": 1000 }) } })
   );
-  assert.equal(result.findings.some((f) => f.kind === "live-failures"), false);
+  assert.equal(result.findings.some((f) => f.kind === "failures"), false);
 });
 
-test("analyzeLiveFailures stays quiet on a tiny partial-day total even at 100% failure", () => {
-  // total (5) is under spikeFloor (100) -- too little of today to mean anything.
+test("analyzeProject stays quiet on a tiny rolling total even at 100% failure", () => {
+  // functions.calls' own errorFloor (30, see FAILURE_THRESHOLDS) is what
+  // gates this -- 5 failed calls never clears it, however high the share.
   const result = analyzeProject(
-    baseArgs({ liveMetricData: { "functions.calls": liveData({ error: 5 }) } })
+    baseArgs({ metricSpecs: [FUNCTIONS_CALLS], rollingMetricData: { "functions.calls": rollingSeries({ error: 5 }) } })
   );
-  assert.equal(result.findings.some((f) => f.kind === "live-failures"), false);
+  assert.equal(result.findings.some((f) => f.kind === "failures"), false);
 });
 
-test("analyzeLiveFailures stays quiet on functions.calls below its raised 20% share -- routine auth-rejection noise, not a crash", () => {
+test("analyzeProject stays quiet on functions.calls below its raised 20% share -- routine auth-rejection noise, not a crash", () => {
   // 13%, matching the routine ~13% auth-rejection rate observed on
   // stanimeros-dev's own callables -- must not fire.
   const result = analyzeProject(
-    baseArgs({ liveMetricData: { "functions.calls": liveData({ ok: 131, error: 19 }) } }) // 150 total, ~13%
+    baseArgs({
+      metricSpecs: [FUNCTIONS_CALLS],
+      rollingMetricData: { "functions.calls": rollingSeries({ ok: 131, error: 19 }) }, // 150 total, ~13%
+    })
   );
-  assert.equal(result.findings.some((f) => f.kind === "live-failures"), false);
+  assert.equal(result.findings.some((f) => f.kind === "failures"), false);
 });
 
-test("analyzeLiveFailures fires a warn on functions.calls at its raised >= 20% share", () => {
+test("analyzeProject fires a warn on functions.calls at its raised >= 20% share", () => {
   const result = analyzeProject(
-    baseArgs({ liveMetricData: { "functions.calls": liveData({ ok: 160, error: 40 }) } }) // 200 total, 20%
+    baseArgs({
+      metricSpecs: [FUNCTIONS_CALLS],
+      rollingMetricData: { "functions.calls": rollingSeries({ ok: 160, error: 40 }) }, // 200 total, 20%
+    })
   );
-  const finding = result.findings.find((f) => f.kind === "live-failures");
-  assert.ok(finding, "expected a live-failures finding");
+  const finding = result.findings.find((f) => f.kind === "failures");
+  assert.ok(finding, "expected a failures finding");
   assert.equal(finding.level, "warn");
-  assert.equal(finding.key, "proj:live-failures:functions.calls");
+  assert.equal(finding.key, "proj:failures:functions.calls");
 });
 
-test("analyzeLiveFailures escalates functions.calls to critical at its raised >= 50% share", () => {
+test("analyzeProject escalates functions.calls to critical at its raised >= 50% share", () => {
   const result = analyzeProject(
-    baseArgs({ liveMetricData: { "functions.calls": liveData({ ok: 100, error: 100 }) } }) // 200 total, 50%
+    baseArgs({
+      metricSpecs: [FUNCTIONS_CALLS],
+      rollingMetricData: { "functions.calls": rollingSeries({ ok: 100, error: 100 }) }, // 200 total, 50%
+    })
   );
-  const finding = result.findings.find((f) => f.kind === "live-failures");
+  const finding = result.findings.find((f) => f.kind === "failures");
   assert.ok(finding);
   assert.equal(finding.level, "critical");
 });
 
-test("analyzeLiveFailures uses the default 5%/25% bar for a metric with no override (run.requests)", () => {
+test("analyzeProject uses the default 5%/25% bar for a metric with no override (run.requests)", () => {
   const warnResult = analyzeProject(
-    baseArgs({ liveMetricData: { "run.requests": liveData({ "2xx": 190, "5xx": 10 }) } }) // 200 total, 5%
+    baseArgs({
+      metricSpecs: [RUN_REQUESTS],
+      rollingMetricData: { "run.requests": rollingSeries({ "2xx": 190, "5xx": 10 }) }, // 200 total, 5%
+    })
   );
-  const warnFinding = warnResult.findings.find((f) => f.kind === "live-failures");
-  assert.ok(warnFinding, "expected a live-failures finding at the default 5% bar");
+  const warnFinding = warnResult.findings.find((f) => f.kind === "failures");
+  assert.ok(warnFinding, "expected a failures finding at the default 5% bar");
   assert.equal(warnFinding.level, "warn");
 
   const criticalResult = analyzeProject(
-    baseArgs({ liveMetricData: { "run.requests": liveData({ "2xx": 150, "5xx": 50 }) } }) // 200 total, 25%
+    baseArgs({
+      metricSpecs: [RUN_REQUESTS],
+      rollingMetricData: { "run.requests": rollingSeries({ "2xx": 150, "5xx": 50 }) }, // 200 total, 25%
+    })
   );
-  assert.equal(criticalResult.findings.find((f) => f.kind === "live-failures").level, "critical");
+  assert.equal(criticalResult.findings.find((f) => f.kind === "failures").level, "critical");
 });
 
 // --- IAM / key hygiene -------------------------------------------------------
@@ -371,12 +460,14 @@ test("analyzeIam flags an unrestricted API key", () => {
 test("a project with any critical finding gets status critical, even alongside warns", () => {
   const spec1 = { key: "firestore.reads", type: "x", kind: "delta" };
   const spec2 = { key: "firestore.writes", type: "y", kind: "delta" };
-  const warnData = seriesWithLatest(100, 350); // warn spike
-  const criticalData = seriesWithLatest(100, 700); // critical spike
   const result = analyzeProject(
     baseArgs({
       metricSpecs: [spec1, spec2],
-      metricData: { "firestore.reads": warnData, "firestore.writes": criticalData },
+      metricData: { "firestore.reads": historySeries(100), "firestore.writes": historySeries(100) },
+      rollingMetricData: {
+        "firestore.reads": rollingSeries({ "": 350 }), // warn spike
+        "firestore.writes": rollingSeries({ "": 700 }), // critical spike
+      },
     })
   );
   assert.equal(result.status, "critical");

@@ -58,7 +58,7 @@ chronologically and is unique per run.
     {
       "key":   "tattoo-healer:spike:firestore.reads",  // stable -- drives email diffing
       "level": "critical",                   // critical | warn
-      "kind":  "spike",                      // spike|stall|failures|live-failures|quota|errors|
+      "kind":  "spike",                      // spike|stall|failures|quota|errors|
                                              // function errors|function silent|function spike|
                                              // missing_index|rules_denied|quota_exhausted|
                                              // billing|deploy_failure|sa-key|broad-role|api-key
@@ -142,19 +142,27 @@ Reports older than 180 days are deleted by the same scheduled function.
 - `cost: null` is normal (Spark project, or export not yet producing data).
   The UI must not show "0.00" for it.
 
-## Amendment: same-day failure rate + IAM/key hygiene
+## Amendment: rolling-24h checks + IAM/key hygiene
 
-Two finding families layered on top of the original schema, both additive and
-neither present in `metrics`/`entities` (they carry their own text):
+`spike`/`stall`/`quota`/`failures` compare two windows, not a UTC calendar
+day: a rolling last-24-hours ("now" back 24h, `monitoring.js` `rollingWindow`)
+against a history baseline built from `baselineDays` complete *prior* UTC days
+(`windowFor`, no longer including "yesterday" as a reserved latest slot).
+Both windows are always a full 24h, so there's one check per concern, not a
+day-boundary version plus a same-day one — a rolling window can't read
+artificially low from being "partial" the way a UTC-calendar-day bucket can
+before it's over, so a real spike or outage is visible as soon as it's real.
+`metrics[key].latest` is this rolling total; `baseline`/`history`/`days`
+describe the historical window only.
 
-- `live-failures` — same-day (partial, UTC-midnight-to-now) failure rate on
-  `functions.calls`/`run.requests`, independent of the yesterday-only
-  spike/stall/quota checks. Catches a bad deploy the same day rather than the
-  next sweep; volume checks stay yesterday-only since a partial day always
-  reads low on volume.
-- `sa-key` / `broad-role` / `api-key` — estate hygiene, not usage: a
-  downloadable (user-managed) service-account key, a service account bound to
-  `roles/owner`/`roles/editor`, or an API key with no restrictions. Degrades
-  to no findings (not "not checked") on a project whose IAM/API-keys read
-  grant hasn't rolled out yet -- see `functions/lib/health/iam.js` and
-  `scripts/health-iam.sh`.
+`functions.calls` uses a raised failure-rate bar (`FAILURE_THRESHOLDS` in
+`config.js`) since that metric's execution-count status is coarse (`ok`/
+`error` only, no 4xx/5xx split like `run.requests` has) and can't separate an
+expected auth rejection from a real crash.
+
+`sa-key` / `broad-role` / `api-key` — estate hygiene, not usage: a
+downloadable (user-managed) service-account key, a service account bound to
+`roles/owner`/`roles/editor`, or an API key with no restrictions. Degrades to
+no findings (not "not checked") on a project whose IAM/API-keys read grant
+hasn't rolled out yet -- see `functions/lib/health/iam.js` and
+`scripts/health-iam.sh`.

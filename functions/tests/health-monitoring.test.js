@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { dropRunShadows, windowFor, isoSecond } = require("../lib/health/monitoring");
+const { dropRunShadows, windowFor, rollingWindow, isoSecond } = require("../lib/health/monitoring");
 
 function entity(overrides) {
   return {
@@ -53,7 +53,7 @@ test("dropRunShadows reports the removed calls total in shadowedCalls, since wit
   assert.equal(shadowedCalls, 127);
 });
 
-test("windowFor returns a window ending at today's UTC midnight and starting days+1 earlier", () => {
+test("windowFor returns a window ending at today's UTC midnight and starting days earlier", () => {
   const { start, end } = windowFor(14);
 
   const expectedEnd = new Date();
@@ -64,8 +64,17 @@ test("windowFor returns a window ending at today's UTC midnight and starting day
   assert.equal(end.getUTCSeconds(), 0);
   assert.equal(end.getUTCMilliseconds(), 0);
 
-  const expectedStart = new Date(expectedEnd.getTime() - 15 * 86400000);
+  const expectedStart = new Date(expectedEnd.getTime() - 14 * 86400000);
   assert.equal(start.getTime(), expectedStart.getTime());
+});
+
+test("rollingWindow returns a window ending now and starting exactly 24 hours earlier", () => {
+  const { start, end } = rollingWindow();
+  const now = Date.now();
+  // Allow a small margin for time elapsed between Date.now() above and the
+  // function call inside rollingWindow().
+  assert.ok(Math.abs(end.getTime() - now) < 1000, "end should be ~now");
+  assert.equal(end.getTime() - start.getTime(), 24 * 60 * 60 * 1000);
 });
 
 test("isoSecond emits second-precision ISO with a trailing Z and no milliseconds", () => {

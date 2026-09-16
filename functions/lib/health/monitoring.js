@@ -1,8 +1,14 @@
 // Cloud Monitoring reads: daily usage per project, and per-function detail.
 //
-// Ported from the Python engine's timeseries()/breakdown(). Everything is
-// bucketed into whole UTC days, which is why the newest bucket is always
-// *yesterday* — a spike surfaces the morning after it happens.
+// Ported from the Python engine's timeseries()/breakdown(). Every check
+// (spike/stall/quota/failures) compares two windows: a rolling last-24-hours
+// (rollingWindow, "now") against a history baseline built from `days`
+// complete prior UTC days (windowFor). Both windows are always full 24h
+// periods, so the comparison is apples-to-apples no matter what time of day
+// the sweep runs — unlike comparing against a UTC-calendar-day bucket, there
+// is no "yesterday vs today so far" split to reason about, and a real spike
+// or outage is visible as soon as it's real, not only after the next UTC
+// midnight.
 
 const { apiGet } = require("./auth");
 
@@ -12,26 +18,22 @@ function isoSecond(date) {
   return date.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
-// The window: `days` complete days ending at today's UTC midnight. The extra
-// day on the start covers the alignment boundary so the oldest bucket is whole.
+// History baseline: `days` complete UTC days, ending at today's UTC
+// midnight — i.e. not including any part of the rolling window below, so a
+// metric's "typical day" isn't itself pulled toward whatever's happening
+// right now.
 function windowFor(days) {
   const end = new Date();
   end.setUTCHours(0, 0, 0, 0);
-  const start = new Date(end.getTime() - (days + 1) * 86400000);
+  const start = new Date(end.getTime() - days * 86400000);
   return { start, end };
 }
 
-// A second window, ending *now* instead of yesterday's midnight. Used only for
-// same-day failure-rate checks (see analyze.js's analyzeLiveFailures) — a
-// partial today always reads low on *volume*, which is exactly why spike/stall
-// stay pinned to yesterday's complete day (see windowFor), but a failure
-// *rate* (failed/total so far) is meaningful on partial data the same way it
-// is on a full one, and catching a bad deploy same-day beats waiting for
-// tomorrow's sweep.
-function todayWindow() {
-  const start = new Date();
-  start.setUTCHours(0, 0, 0, 0);
-  return { start, end: new Date() };
+// The "latest" window for every check: a straightforward rolling last 24
+// hours, ending now.
+function rollingWindow() {
+  const end = new Date();
+  return { start: new Date(end.getTime() - 24 * 60 * 60 * 1000), end };
 }
 
 function timeSeriesUrl(projectId, params) {
@@ -153,4 +155,4 @@ function dropRunShadows(entities) {
   return { entities: kept, shadowedCalls };
 }
 
-module.exports = { timeseries, breakdown, dropRunShadows, windowFor, todayWindow, isoSecond };
+module.exports = { timeseries, breakdown, dropRunShadows, windowFor, rollingWindow, isoSecond };

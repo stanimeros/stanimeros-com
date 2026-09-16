@@ -43,66 +43,91 @@ function worstLevel(findings) {
 
 // --- metric-level findings ------------------------------------------------
 
-function analyzeMetric(projectId, spec, data, plan, cfg, findings) {
-  const totals = {};
-  for (const bucket of Object.values(data)) {
+// Bytes need a far higher floor than counts — 100 bytes is not a spike. A
+// metric with a known free-tier ceiling (Firestore reads/writes/deletes,
+// hosting egress, ...) also floors at a fraction of that ceiling — this
+// project is internal-only, so a 10x ratio on 40 reads is not worth an
+// email, whatever the ratio says. Applies on every plan, not just Spark: the
+// quota check is Spark-only, but a tiny absolute number is noise on Blaze
+// too. Cloud Storage metrics (egress, total) specifically float around a lot
+// between small projects without meaning anything — nothing under 300MB is
+// worth a warning either way.
+function spikeFloorFor(spec, cfg) {
+  const unit = spec.unit || null;
+  const bytesFloor = spec.key.startsWith("storage.") ? 300 * 1024 * 1024 : 10 * 1024 * 1024;
+  return Math.max(cfg.spikeFloor, unit === "bytes" ? bytesFloor : 0, spec.freeDaily ? spec.freeDaily * cfg.quietFraction : 0);
+}
+
+/**
+ * One metric's findings. `historyData` builds the baseline (median of `days`
+ * complete prior UTC days, from monitoring.js's windowFor); `rollingData` is
+ * the current reading (a rolling last-24-hours, from rollingWindow) that
+ * every check -- spike, stall, quota, failure rate -- compares against it.
+ * Both windows are always a full 24h, so this is one check per concern, not
+ * a yesterday-only version plus a same-day one: a rolling window can't read
+ * artificially low from being "partial" the way a UTC-calendar-day bucket
+ * can before it's over.
+ *
+ * `suppressFindings` (run.requests only, when it's at least partly shadowed
+ * by matching Cloud Functions -- see the caller and dropRunShadows in
+ * monitoring.js) still computes latest/baseline for display in `metrics`,
+ * but skips pushing spike/stall/failures findings: functions.calls already
+ * covers the same underlying traffic, and there's no reliable way to
+ * subtract just the shadowed portion here since the entity breakdown that
+ * knows the shadow amount runs on a different (historical, day-aligned)
+ * window than this rolling one -- subtracting a mismatched-window number
+ * doesn't cancel out and was previously (wrongly) leaving both metrics
+ * spiking on the same event with two different, still-nonzero totals.
+ */
+function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, findings, suppressFindings = false) {
+  const historyTotals = {};
+  for (const bucket of Object.values(historyData || {})) {
     for (const [day, value] of Object.entries(bucket)) {
-      totals[day] = (totals[day] || 0) + value;
+      historyTotals[day] = (historyTotals[day] || 0) + value;
     }
   }
-  const days = Object.keys(totals).sort();
-  if (!days.length) return null;
-
-  const ordered = days.map((d) => totals[d]);
-  const latest = ordered[ordered.length - 1];
-  const history = ordered.slice(0, -1);
+  const days = Object.keys(historyTotals).sort();
+  const history = days.map((d) => historyTotals[d]);
   const baseline = median(history);
+
+  const isFailure = FAILURE_LABELS[spec.key];
+  let latest = 0;
+  let failedLatest = 0;
+  for (const [label, bucket] of Object.entries(rollingData || {})) {
+    const sum = Object.values(bucket).reduce((a, b) => a + b, 0);
+    latest += sum;
+    if (isFailure && isFailure(label)) failedLatest += sum;
+  }
+
+  // Nothing here or in the past -- the service simply isn't used in this
+  // project. Some activity in only one of the two windows (a metric just
+  // starting up, or one that stopped) is real and falls through below.
+  if (!days.length && !latest) return null;
+
   const unit = spec.unit || null;
 
-  // Bytes need a far higher floor than counts — 100 bytes is not a spike.
-  // A metric with a known free-tier ceiling (Firestore reads/writes/deletes,
-  // hosting egress, ...) also floors at a fraction of that ceiling — this
-  // project is internal-only, so a 10x ratio on 40 reads is not worth an
-  // email, whatever the ratio says. Applies on every plan, not just Spark:
-  // the quota check below is Spark-only, but a tiny absolute number is noise
-  // on Blaze too.
-  // Cloud Storage metrics (egress, total) specifically float around a lot
-  // between small projects without meaning anything — nothing under 300MB is
-  // worth a warning either way.
-  const bytesFloor = spec.key.startsWith("storage.") ? 300 * 1024 * 1024 : 10 * 1024 * 1024;
-  const floor = Math.max(
-    cfg.spikeFloor,
-    unit === "bytes" ? bytesFloor : 0,
-    spec.freeDaily ? spec.freeDaily * cfg.quietFraction : 0
-  );
+  if (!suppressFindings) {
+    const floor = spikeFloorFor(spec, cfg);
 
-  if (latest >= floor && baseline > 0 && latest / baseline >= cfg.spikeRatio) {
-    const ratio = latest / baseline;
-    findings.push({
-      key: findingKey(projectId, "spike", spec.key),
-      level: ratio >= cfg.spikeRatio * 2 ? "critical" : "warn",
-      kind: "spike",
-      text: `${spec.key} ${formatValue(latest, unit)} vs baseline ${formatValue(baseline, unit)} (${ratio.toFixed(1)}x)`,
-    });
-  } else if (latest === 0 && baseline >= floor) {
-    findings.push({
-      key: findingKey(projectId, "stall", spec.key),
-      level: "warn",
-      kind: "stall",
-      text: `${spec.key} dropped to zero (baseline ${formatValue(baseline, unit)}) — possible outage`,
-    });
-  }
-
-  // A failure-labelled sub-series becomes its own error signal.
-  const isFailure = FAILURE_LABELS[spec.key];
-  let failedLatest = 0;
-  if (isFailure) {
-    for (const [label, bucket] of Object.entries(data)) {
-      if (!isFailure(label)) continue;
-      const perDay = days.map((d) => bucket[d] || 0);
-      failedLatest += perDay[perDay.length - 1];
+    if (latest >= floor && baseline > 0 && latest / baseline >= cfg.spikeRatio) {
+      const ratio = latest / baseline;
+      findings.push({
+        key: findingKey(projectId, "spike", spec.key),
+        level: ratio >= cfg.spikeRatio * 2 ? "critical" : "warn",
+        kind: "spike",
+        text: `${spec.key} ${formatValue(latest, unit)} vs baseline ${formatValue(baseline, unit)} (${ratio.toFixed(1)}x)`,
+      });
+    } else if (latest === 0 && baseline >= floor) {
+      findings.push({
+        key: findingKey(projectId, "stall", spec.key),
+        level: "warn",
+        kind: "stall",
+        text: `${spec.key} dropped to zero over the last 24h (baseline ${formatValue(baseline, unit)}) — possible outage`,
+      });
     }
-    if (failedLatest) {
+
+    // A failure-labelled sub-series becomes its own error signal.
+    if (isFailure && failedLatest) {
       const share = latest ? failedLatest / latest : 1;
       const t = failureThresholdsFor(spec.key, cfg);
       if (failedLatest >= t.errorFloor && share >= t.share) {
@@ -110,26 +135,25 @@ function analyzeMetric(projectId, spec, data, plan, cfg, findings) {
           key: findingKey(projectId, "failures", spec.key),
           level: share >= t.criticalShare ? "critical" : "warn",
           kind: "failures",
-          text: `${spec.key} failure rate ${Math.round(share * 100)}% (${formatValue(failedLatest)} of ${formatValue(latest)})`,
+          text: `${spec.key} failure rate ${Math.round(share * 100)}% over the last 24h (${formatValue(failedLatest)} of ${formatValue(latest)})`,
+        });
+      }
+    }
+    // Spark projects have a ceiling worth warning about before it is hit.
+    if (plan === "Spark" && spec.freeDaily) {
+      const used = latest / spec.freeDaily;
+      if (used >= cfg.freeTierWarn) {
+        findings.push({
+          key: findingKey(projectId, "quota", spec.key),
+          level: used >= 1 ? "critical" : "warn",
+          kind: "quota",
+          text: `${spec.key} at ${Math.round(used * 100)}% of the free daily allowance over the last 24h (${formatValue(latest, unit)} / ${formatValue(spec.freeDaily, unit)})`,
         });
       }
     }
   }
 
-  // Spark projects have a ceiling worth warning about before it is hit.
-  if (plan === "Spark" && spec.freeDaily) {
-    const used = latest / spec.freeDaily;
-    if (used >= cfg.freeTierWarn) {
-      findings.push({
-        key: findingKey(projectId, "quota", spec.key),
-        level: used >= 1 ? "critical" : "warn",
-        kind: "quota",
-        text: `${spec.key} at ${Math.round(used * 100)}% of the free daily allowance (${formatValue(latest, unit)} / ${formatValue(spec.freeDaily, unit)})`,
-      });
-    }
-  }
-
-  return { latest, baseline, unit, history: ordered, days, failedLatest };
+  return { latest, baseline, unit, history, days, failedLatest };
 }
 
 // --- per-entity findings --------------------------------------------------
@@ -192,43 +216,6 @@ function analyzeEntities(projectId, breakdowns, cfg, findings) {
   return { entities: kept, shadowedCalls };
 }
 
-// --- same-day failure-rate findings -----------------------------------------
-
-// Volume checks (spike/stall/quota) stay pinned to yesterday's complete UTC
-// day -- see monitoring.js todayWindow. A partial today always reads low on
-// *volume*, which would make those false-fire, but a failure *rate*
-// (failed/total so far today) is meaningful on partial data the same way it
-// is on a full day, and catching a bad deploy same-day beats waiting for
-// tomorrow's sweep.
-function analyzeLiveFailures(projectId, liveMetricData, cfg, findings) {
-  for (const [key, data] of Object.entries(liveMetricData || {})) {
-    const isFailure = FAILURE_LABELS[key];
-    if (!isFailure || !data) continue;
-
-    let total = 0;
-    let failed = 0;
-    for (const [label, bucket] of Object.entries(data)) {
-      const sum = Object.values(bucket).reduce((a, b) => a + b, 0);
-      total += sum;
-      if (isFailure(label)) failed += sum;
-    }
-    // Too little traffic so far today for a rate to mean anything -- the
-    // same floor that keeps a single failed call from reading as 100%.
-    if (!failed || total < cfg.spikeFloor) continue;
-
-    const share = failed / total;
-    const t = failureThresholdsFor(key, cfg);
-    if (failed >= t.errorFloor && share >= t.share) {
-      findings.push({
-        key: findingKey(projectId, "live-failures", key),
-        level: share >= t.criticalShare ? "critical" : "warn",
-        kind: "live-failures",
-        text: `${key} failing today: ${Math.round(share * 100)}% (${formatValue(failed)} of ${formatValue(total)}) so far`,
-      });
-    }
-  }
-}
-
 // --- IAM / key hygiene findings ---------------------------------------------
 
 function daysSince(iso) {
@@ -277,20 +264,20 @@ function analyzeIam(projectId, iam, cfg, findings) {
 // --- log findings ---------------------------------------------------------
 
 function analyzeLog(projectId, log, logHours, cfg, findings) {
-  if (log.count !== null && log.count >= cfg.errorFloor) {
+  // No floor here, unlike the Monitoring-derived checks above: those are
+  // ratios/rates that need real volume to mean anything, but a real
+  // ERROR-severity log entry is a real error regardless of count -- the
+  // dashboard must never show a green "no findings" card next to a nonzero
+  // error count, which a floor here would do for any count below it.
+  if (log.count !== null && log.count > 0) {
     const more = log.truncated ? "+" : "";
-    const worst = Object.entries(log.sources)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([source, n]) => `${source} (${n})`)
-      .join(", ");
     findings.push({
       // Deliberately not keyed on the count: an ongoing error burst is one
       // problem, not a new one every run.
       key: findingKey(projectId, "errors", "volume"),
       level: log.count >= cfg.criticalErrors ? "critical" : "warn",
       kind: "errors",
-      text: `${log.count}${more} error log entries in the last ${logHours}h${worst ? ` — worst: ${worst}` : ""}`,
+      text: `${log.count}${more} error log entries in the last ${logHours}h`,
     });
   }
 
@@ -316,21 +303,29 @@ function analyzeProject({
   project,
   metricSpecs,
   metricData,
+  rollingMetricData,
   breakdowns,
   log,
   cost,
   cfg,
   billingAccount,
-  liveMetricData,
   iam,
 }) {
   const findings = [];
   const metrics = {};
 
+  // Computed before the metrics loop so run.requests knows whether it's
+  // shadowed by matching Cloud Functions (gen-2 functions get counted under
+  // both metric names) before spike/stall/failure checks run on it --
+  // otherwise the same real traffic produces two findings for one event. See
+  // analyzeMetric's `suppressFindings`.
+  const { entities, shadowedCalls } = analyzeEntities(project.id, breakdowns, cfg, findings);
+
   for (const spec of metricSpecs) {
-    const data = metricData[spec.key];
-    if (!data || !Object.keys(data).length) continue;
-    const summary = analyzeMetric(project.id, spec, data, project.plan, cfg, findings);
+    const historyData = metricData[spec.key];
+    const rollingData = (rollingMetricData || {})[spec.key];
+    const suppressFindings = spec.key === "run.requests" && shadowedCalls > 0;
+    const summary = analyzeMetric(project.id, spec, historyData, rollingData, project.plan, cfg, findings, suppressFindings);
     if (!summary) continue;
     metrics[spec.key] = {
       latest: summary.latest,
@@ -339,6 +334,9 @@ function analyzeProject({
       history: summary.history,
       days: summary.days,
     };
+    if (shadowedCalls && spec.key === "run.requests") {
+      metrics[spec.key].shadowedCalls = shadowedCalls;
+    }
     if (summary.failedLatest) {
       metrics[`${spec.key}.failed`] = {
         latest: summary.failedLatest,
@@ -350,13 +348,7 @@ function analyzeProject({
     }
   }
 
-  const { entities, shadowedCalls } = analyzeEntities(project.id, breakdowns, cfg, findings);
-  if (shadowedCalls && metrics["run.requests"]) {
-    metrics["run.requests"].shadowedCalls = shadowedCalls;
-  }
-
   analyzeLog(project.id, log, cfg.logHours, cfg, findings);
-  analyzeLiveFailures(project.id, liveMetricData, cfg, findings);
   analyzeIam(project.id, iam, cfg, findings);
 
   // Attach the log's per-source error count to the entity it belongs to.
@@ -392,7 +384,6 @@ function analyzeProject({
 
 module.exports = {
   analyzeProject,
-  analyzeLiveFailures,
   analyzeIam,
   median,
   formatValue,

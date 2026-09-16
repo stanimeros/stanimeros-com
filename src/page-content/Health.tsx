@@ -243,8 +243,8 @@ function ProjectCard({ project }: { project: ProjectResult }) {
           {metrics.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground">
-                Yesterday (UTC) vs the 14-day median — not a live counter, and calls are summed across every
-                function in the project.
+                Last 24h vs the 14-day median — as of the last sweep, not a live counter, and calls are
+                summed across every function in the project.
               </p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {metrics.map(([key, metric]) => (
@@ -686,8 +686,7 @@ export default function Health() {
               {report && (
                 <p className="text-sm text-muted-foreground">
                   {LEVEL_LABEL[report.status]} · {timeAgo(report.generated)} · {report.mode} ·{" "}
-                  {Math.round(report.durationMs / 1000)}s · {report.logHours}h error window · metrics are
-                  yesterday&apos;s full UTC day, not live
+                  {Math.round(report.durationMs / 1000)}s · {report.logHours}h error window
                 </p>
               )}
             </div>

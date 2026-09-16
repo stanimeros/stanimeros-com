@@ -7,19 +7,14 @@
 
 const admin = require("firebase-admin");
 
-const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, FAILURE_LABELS, LIMITS, thresholdsFor } = require("./config");
+const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, LIMITS, thresholdsFor } = require("./config");
 const { getAccessToken } = require("./auth");
-const { timeseries, breakdown, windowFor, todayWindow } = require("./monitoring");
+const { timeseries, breakdown, windowFor, rollingWindow } = require("./monitoring");
 const { readErrors } = require("./logging");
 const { fetchCosts, fetchBillingTotal } = require("./billing");
 const { collectIam } = require("./iam");
 const { analyzeProject, worstLevel } = require("./analyze");
 const { notifyIfNew, newKeys } = require("./notify");
-
-// The only metrics a same-day failure-rate check needs -- see
-// analyze.js's analyzeLiveFailures. Fetching just these two, not all of
-// METRICS, keeps the extra same-day query cheap.
-const LIVE_METRICS = METRICS.filter((spec) => FAILURE_LABELS[spec.key]);
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -51,14 +46,23 @@ async function mapWithLimit(items, limit, worker) {
 // Fetch everything one project needs. Throws with a `stage` so a failure can
 // say which half of the sweep broke.
 async function collect(project, token, cfg) {
-  const { start, end } = windowFor(cfg.baselineDays);
+  const { start: historyStart, end: historyEnd } = windowFor(cfg.baselineDays);
+  const { start: rollingStart, end: rollingEnd } = rollingWindow();
 
+  // Both windows feed every metric check (spike/stall/quota/failures) --
+  // history is the baseline, rolling is "now" -- so a failure to read either
+  // one means those checks can't run at all for this project. One try/catch,
+  // one stage: a project that 403s here renders as "not checked", not as a
+  // silent pass, same as before.
   const metricData = {};
+  const rollingMetricData = {};
   try {
-    const series = await Promise.all(
-      METRICS.map((spec) => timeseries(project.id, spec, start, end, token))
-    );
-    METRICS.forEach((spec, i) => { metricData[spec.key] = series[i]; });
+    const [historySeries, rollingSeries] = await Promise.all([
+      Promise.all(METRICS.map((spec) => timeseries(project.id, spec, historyStart, historyEnd, token))),
+      Promise.all(METRICS.map((spec) => timeseries(project.id, spec, rollingStart, rollingEnd, token))),
+    ]);
+    METRICS.forEach((spec, i) => { metricData[spec.key] = historySeries[i]; });
+    METRICS.forEach((spec, i) => { rollingMetricData[spec.key] = rollingSeries[i]; });
   } catch (err) {
     err.stage = "monitoring";
     throw err;
@@ -67,7 +71,7 @@ async function collect(project, token, cfg) {
   const breakdowns = {};
   try {
     const parts = await Promise.all(
-      BREAKDOWNS.map((spec) => breakdown(project.id, spec, start, end, token))
+      BREAKDOWNS.map((spec) => breakdown(project.id, spec, historyStart, historyEnd, token))
     );
     BREAKDOWNS.forEach((spec, i) => { breakdowns[spec.kind] = parts[i]; });
   } catch (err) {
@@ -79,27 +83,14 @@ async function collect(project, token, cfg) {
   // a project whose logs can't be read must not look like one with no errors.
   const log = await readErrors(project.id, cfg.logHours, token);
 
-  // Both of these are additive, non-core checks (same-day failure rate; IAM
-  // hygiene) layered on top of the metrics/log checks above, which already
-  // work on every project's existing monitoring.viewer/logging.viewer grant.
-  // Neither should be able to take the rest of the project's sweep down —
-  // the live window degrades quietly to {} on failure, and collectIam
-  // degrades internally per-check (see iam.js) since its grant rolls out
-  // separately, project by project.
-  let liveMetricData = {};
-  try {
-    const { start: liveStart, end: liveEnd } = todayWindow();
-    const series = await Promise.all(
-      LIVE_METRICS.map((spec) => timeseries(project.id, spec, liveStart, liveEnd, token))
-    );
-    LIVE_METRICS.forEach((spec, i) => { liveMetricData[spec.key] = series[i]; });
-  } catch (err) {
-    console.log(`live metrics unavailable for ${project.id} -- ${String(err.message || err).slice(0, 200)}`);
-  }
-
+  // Additive, non-core (IAM hygiene) on top of the metrics/log checks above,
+  // which already work on every project's existing
+  // monitoring.viewer/logging.viewer grant. collectIam degrades internally
+  // per-check (see iam.js) since its own grant rolls out separately, project
+  // by project -- it must not be able to take the rest of the sweep down.
   const iam = await collectIam(project.id, token);
 
-  return { metricData, breakdowns, log, liveMetricData, iam };
+  return { metricData, rollingMetricData, breakdowns, log, iam };
 }
 
 async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
@@ -117,17 +108,17 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
   const results = await mapWithLimit(projects, CONCURRENCY, async (project) => {
     const projectCfg = thresholdsFor(project.id);
     try {
-      const { metricData, breakdowns, log, liveMetricData, iam } = await collect(project, token, projectCfg);
+      const { metricData, rollingMetricData, breakdowns, log, iam } = await collect(project, token, projectCfg);
       return analyzeProject({
         project,
         metricSpecs: METRICS,
         metricData,
+        rollingMetricData,
         breakdowns,
         log,
         cost: (costs && costs[project.id]) || null,
         cfg: projectCfg,
         billingAccount: BILLING_ACCOUNT,
-        liveMetricData,
         iam,
       });
     } catch (err) {
