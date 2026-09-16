@@ -18,12 +18,15 @@ const tools = [
       {
         name: "checkAvailability",
         description:
-          "Check free/busy time on the owner's calendar for a time window. Returns only busy time ranges, never event titles or details.",
+          `Check free/busy time on the owner's calendar for a single ${BOOKING_DURATION_MINUTES}-minute slot. The window must be exactly ${BOOKING_DURATION_MINUTES} minutes (endTime = startTime + ${BOOKING_DURATION_MINUTES} minutes) — call it once per candidate slot, not with a wider range. Returns only busy time ranges, never event titles or details.`,
         parameters: {
           type: Type.OBJECT,
           properties: {
-            startTime: { type: Type.STRING, description: "ISO 8601 datetime, start of window" },
-            endTime: { type: Type.STRING, description: "ISO 8601 datetime, end of window" },
+            startTime: { type: Type.STRING, description: "ISO 8601 datetime, start of the slot" },
+            endTime: {
+              type: Type.STRING,
+              description: `ISO 8601 datetime, exactly ${BOOKING_DURATION_MINUTES} minutes after startTime`,
+            },
           },
           required: ["startTime", "endTime"],
         },
@@ -61,7 +64,7 @@ Calls are available ${BOOKING_DAYS_LABEL}, ${BOOKING_START_HOUR}:00–${BOOKING_
 
 How to book, woven naturally into the conversation rather than as a rigid checklist — don't repeat back or ask the visitor to confirm information they already gave you unless something is genuinely ambiguous:
 - Find out what they need and, along the way, pick up their name, email, and a time that works for them. If something's missing, ask for it in the flow of the conversation, not as a separate interrogation step. Never re-ask for something already clear from earlier context (e.g. the purpose) — just use it.
-- Call checkAvailability before offering or booking a time. Only offer times it confirms are free.
+- Call checkAvailability before offering or booking a time, once per candidate slot, with startTime/endTime exactly ${BOOKING_DURATION_MINUTES} minutes apart. Only offer times it confirms are free.
 - Before calling createBooking, make sure the visitor has actually agreed to the specific time you're about to book — a clear yes, or them proposing that exact time, counts. You don't need to spell out a formal summary and wait for a rubber-stamp "confirm" every time; use judgment.
 - Only after that, call createBooking with those exact details (just startTime — the tool computes the ${BOOKING_DURATION_MINUTES}-minute end time itself). Never book on the first message or assume agreement that wasn't given.
 - Never tell the visitor a call is booked unless createBooking actually succeeded — if it errors (e.g. the slot got taken), tell them and offer to find another time.

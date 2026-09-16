@@ -63,9 +63,10 @@ function assertBookableStart(start) {
   }
 }
 
-// checkAvailability still takes an explicit window from the model (it may
-// want to probe a range wider than one slot), so this additionally checks
-// the window is exactly BOOKING_DURATION_MINUTES long.
+// checkAvailability takes an explicit window from the model, but it's only
+// ever meant to probe a single candidate slot — the tool description and
+// system instruction (lib/gemini.js) tell the model to pass exactly
+// BOOKING_DURATION_MINUTES, and this enforces it server-side.
 function assertBookableWindow(startTime, endTime) {
   const start = new Date(ensureOffset(startTime));
   const end = new Date(ensureOffset(endTime));
