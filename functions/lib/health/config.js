@@ -101,7 +101,14 @@ const DEFAULTS = {
   spikeFloor: 100,      // ...and is at least this many units, so tiny numbers stay quiet
   quietFraction: 0.2,   // ...or 20% of a metric's freeDaily, if that's higher (e.g. 10k Firestore reads)
   errorFloor: 10,       // errors/window below this are never flagged on their own
-  criticalErrors: 100,  // errors/window at or above this are critical
+  // An error is an error: any ERROR-severity log entry in the window makes
+  // the project red, not amber. This was 100, which meant a project with 8
+  // real errors rendered the same amber as an unrestricted API key -- two
+  // very different things wearing one colour. The scale stays here rather
+  // than being hard-coded in analyze.js so a project that legitimately logs
+  // routine errors can raise its own bar in OVERRIDES instead of the whole
+  // estate losing the distinction.
+  criticalErrors: 1,    // errors/window at or above this are critical
   freeTierWarn: 0.8,    // warn at 80% of a Spark daily allowance
   baselineDays: 14,
   logHours: 48,
@@ -112,6 +119,53 @@ const DEFAULTS = {
 // project control. Bound to a human, these are expected; bound to a service
 // account, they're usually a leftover from early setup and worth narrowing.
 const BROAD_ROLES = new Set(["roles/owner", "roles/editor"]);
+
+// Severity ordering, worst first. This is the one place "worse than" is
+// defined -- worstLevel() and every findings.sort() walk this array instead
+// of hard-coding a comparison, so adding a tier later (or reordering these)
+// is a one-line change, not a hunt through analyze.js/index.js for every
+// place that compared two levels.
+const LEVEL_ORDER = ["critical", "warn", "low", "ok"];
+
+// kind -> level, for every finding kind whose severity doesn't depend on the
+// number behind it. Adding a new always-the-same-severity kind is a one-line
+// addition here.
+//
+// A handful of kinds are deliberately *not* here because they're graduated
+// by magnitude rather than flat: spike/failures/quota/errors escalate on a
+// ratio, share, or count against a cfg.* threshold; sa-key escalates on key
+// age (cfg.saKeyCriticalDays); broad-role depends on whether the account is
+// GCP's own default agent (iam.js's isDefaultAgent) or a hand-created one.
+// Those stay computed in analyze.js, next to the threshold they compare
+// against -- putting only half of a graduated decision in a table would be
+// more confusing than keeping it whole.
+//
+// Three tiers, not two: `critical` is a real failure, `warn` is something
+// off but nothing failing, `low` is estate hygiene that's true but not an
+// incident and often not fixable today (see health-schema.md).
+const LEVEL_BY_KIND = {
+  // real failures
+  quota_exhausted: "critical",
+  billing: "critical",
+  deploy_failure: "critical",
+
+  // something is off, but nothing is currently failing
+  stall: "warn",
+  "function silent": "warn",
+  "run silent": "warn",
+  "function spike": "warn",
+  "run spike": "warn",
+  missing_index: "warn",
+  rules_denied: "warn",
+
+  // hygiene: true, but not a fixable-today incident, and not shaped like
+  // usage. service_account_warning sits here for the same reason
+  // api_key_warning does -- both are GCP's own credential-hygiene notices,
+  // not evidence anything is currently broken.
+  api_key_warning: "low",
+  service_account_warning: "low",
+  "api-key": "low",
+};
 
 // Per-project threshold overrides, merged over DEFAULTS. Phase 1 of the plan
 // fills this in: a project that is legitimately spiky gets its floor or ratio
@@ -133,6 +187,10 @@ const LIMITS = {
   entitiesPerProject: 25,
   topErrorsPerProject: 10,
   reportRetentionDays: 180,
+  // health_findings/{key}: `resolved` docs are pruned this long after
+  // resolvedAt; `open`/`unknown`/`acked` are kept forever since an open
+  // finding is by definition still true (plan.md S1.8).
+  lifecycleRetentionDays: 90,
 };
 
 function thresholdsFor(projectId) {
@@ -147,6 +205,8 @@ module.exports = {
   FAILURE_THRESHOLDS,
   BREAKDOWNS,
   BROAD_ROLES,
+  LEVEL_ORDER,
+  LEVEL_BY_KIND,
   DEFAULTS,
   OVERRIDES,
   LIMITS,

@@ -4,7 +4,7 @@
 // Output is camelCase, matching docs/health-schema.md — the engine's internal
 // snake_case is converted once, here, at the boundary.
 
-const { FAILURE_LABELS, LIMITS, failureThresholdsFor } = require("./config");
+const { FAILURE_LABELS, LEVEL_ORDER, LEVEL_BY_KIND, LIMITS, failureThresholdsFor } = require("./config");
 const { dropRunShadows } = require("./monitoring");
 const { ALWAYS_REPORT } = require("./logging");
 
@@ -36,9 +36,17 @@ function findingKey(projectId, kind, subject) {
   return `${projectId}:${String(kind).replace(/\s+/g, ".")}:${subject}`;
 }
 
+// "Worst wins": a project (or the whole report) is only as healthy as its
+// worst finding. Walks LEVEL_ORDER (config.js) rather than hard-coding a
+// comparison, so a tier added there is picked up here for free. No findings
+// at all is the only way to earn "ok" -- a `low`-only project is `low`, not
+// `ok`, since `ok` means the estate hygiene is clean too.
 function worstLevel(findings) {
-  if (findings.some((f) => f.level === "critical")) return "critical";
-  return findings.length ? "warn" : "ok";
+  let worst = "ok";
+  for (const f of findings) {
+    if (LEVEL_ORDER.indexOf(f.level) < LEVEL_ORDER.indexOf(worst)) worst = f.level;
+  }
+  return worst;
 }
 
 // --- metric-level findings ------------------------------------------------
@@ -120,7 +128,7 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
     } else if (latest === 0 && baseline >= floor) {
       findings.push({
         key: findingKey(projectId, "stall", spec.key),
-        level: "warn",
+        level: LEVEL_BY_KIND.stall,
         kind: "stall",
         text: `${spec.key} dropped to zero over the last 24h (baseline ${formatValue(baseline, unit)}) — possible outage`,
       });
@@ -158,6 +166,37 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
 
 // --- per-entity findings --------------------------------------------------
 
+// One entity's shape from its two windows, or null if it isn't active in
+// either -- pulled out of the loop below so it has no opinion on findings,
+// only on the numbers.
+function buildEntity(name, kind, data, rollingData) {
+  const days = [...new Set([...Object.keys(data.calls), ...Object.keys(data.errors)])].sort();
+  const calls = days.map((d) => data.calls[d] || 0);
+  const errors = days.map((d) => data.errors[d] || 0);
+  const callsBaseline = calls.length ? median(calls) : 0;
+
+  // Rolling 24h "now" -- summed across whatever day key(s) the window
+  // straddles, same reasoning as analyzeMetric's rollingData handling.
+  const callsNow = Object.values(rollingData.calls || {}).reduce((a, b) => a + b, 0);
+  const errorsNow = Object.values(rollingData.errors || {}).reduce((a, b) => a + b, 0);
+
+  // Nothing in either window -- this name simply isn't active.
+  if (!days.length && !callsNow && !errorsNow) return null;
+
+  return {
+    name,
+    kind,
+    calls: callsNow,
+    callsBaseline,
+    callsHistory: calls,
+    errors: errorsNow,
+    errorsHistory: errors,
+    errorRate: callsNow ? errorsNow / callsNow : 0,
+    logErrors: 0,
+    days,
+  };
+}
+
 /**
  * Per-function/-service findings. `breakdowns` is the history (median
  * baseline, same complete-prior-UTC-days window as the project metrics);
@@ -178,62 +217,54 @@ function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings
     for (const name of names) {
       const data = byName[name] || { calls: {}, errors: {} };
       const rollingData = rollingByName[name] || { calls: {}, errors: {} };
-
-      const days = [...new Set([...Object.keys(data.calls), ...Object.keys(data.errors)])].sort();
-      const calls = days.map((d) => data.calls[d] || 0);
-      const errors = days.map((d) => data.errors[d] || 0);
-      const callsBaseline = calls.length ? median(calls) : 0;
-
-      // Rolling 24h "now" -- summed across whatever day key(s) the window
-      // straddles, same reasoning as analyzeMetric's rollingData handling.
-      const callsNow = Object.values(rollingData.calls || {}).reduce((a, b) => a + b, 0);
-      const errorsNow = Object.values(rollingData.errors || {}).reduce((a, b) => a + b, 0);
-
-      // Nothing in either window -- this name simply isn't active.
-      if (!days.length && !callsNow && !errorsNow) continue;
-
-      const errorRate = callsNow ? errorsNow / callsNow : 0;
-
-      entities.push({
-        name,
-        kind,
-        calls: callsNow,
-        callsBaseline,
-        callsHistory: calls,
-        errors: errorsNow,
-        errorsHistory: errors,
-        errorRate,
-        logErrors: 0,
-        days,
-      });
-
-      if (errorsNow >= 5 && errorRate >= 0.05) {
-        findings.push({
-          key: findingKey(projectId, `${kind} errors`, name),
-          level: errorRate >= 0.25 ? "critical" : "warn",
-          kind: `${kind} errors`,
-          text: `${name}: ${formatValue(errorsNow)} failed of ${formatValue(callsNow)} calls over the last 24h (${Math.round(errorRate * 100)}%)`,
-        });
-      } else if (callsNow === 0 && callsBaseline >= cfg.spikeFloor) {
-        findings.push({
-          key: findingKey(projectId, `${kind} silent`, name),
-          level: "warn",
-          kind: `${kind} silent`,
-          text: `${name}: no calls in the last 24h (baseline ${formatValue(callsBaseline)}/day)`,
-        });
-      } else if (callsNow >= cfg.spikeFloor && callsBaseline > 0 && callsNow / callsBaseline >= cfg.spikeRatio) {
-        findings.push({
-          key: findingKey(projectId, `${kind} spike`, name),
-          level: "warn",
-          kind: `${kind} spike`,
-          text: `${name}: ${formatValue(callsNow)} calls vs baseline ${formatValue(callsBaseline)} over the last 24h (${(callsNow / callsBaseline).toFixed(1)}x)`,
-        });
-      }
+      const entity = buildEntity(name, kind, data, rollingData);
+      if (entity) entities.push(entity);
     }
   }
 
+  // A gen-2 Cloud Function *is* a Cloud Run service, so it reports into both
+  // BREAKDOWNS specs in config.js: once under its real function name
+  // (`getStatistics`), once under Cloud Run's lowercased service name
+  // (`getstatistics`). dropRunShadows collapses that pair to the function
+  // entity -- keeping the function spelling (the real deploy name the owner
+  // greps for) and the function's own numbers (invocation count/errors),
+  // not a sum of both: run/request_count and function/execution_count count
+  // different things (HTTP requests vs. invocations), and summing would
+  // double the call count for every gen-2 function in the estate. A
+  // standalone Cloud Run service with no function of the same name is left
+  // untouched. This has to happen *before* findings are generated below --
+  // doing it only on the returned entity list (as before) still left the
+  // dropped run entity's own "silent"/"spike"/"errors" finding standing,
+  // since that finding was pushed in the same pass the entity was built in.
   const { entities: kept, shadowedCalls } = dropRunShadows(entities);
   kept.sort((a, b) => b.errors - a.errors || b.calls - a.calls);
+
+  for (const entity of kept) {
+    const { name, kind, calls: callsNow, callsBaseline, errors: errorsNow, errorRate } = entity;
+    if (errorsNow >= 5 && errorRate >= 0.05) {
+      findings.push({
+        key: findingKey(projectId, `${kind} errors`, name),
+        level: errorRate >= 0.25 ? "critical" : "warn",
+        kind: `${kind} errors`,
+        text: `${name}: ${formatValue(errorsNow)} failed of ${formatValue(callsNow)} calls over the last 24h (${Math.round(errorRate * 100)}%)`,
+      });
+    } else if (callsNow === 0 && callsBaseline >= cfg.spikeFloor) {
+      findings.push({
+        key: findingKey(projectId, `${kind} silent`, name),
+        level: LEVEL_BY_KIND[`${kind} silent`],
+        kind: `${kind} silent`,
+        text: `${name}: no calls in the last 24h (baseline ${formatValue(callsBaseline)}/day)`,
+      });
+    } else if (callsNow >= cfg.spikeFloor && callsBaseline > 0 && callsNow / callsBaseline >= cfg.spikeRatio) {
+      findings.push({
+        key: findingKey(projectId, `${kind} spike`, name),
+        level: LEVEL_BY_KIND[`${kind} spike`],
+        kind: `${kind} spike`,
+        text: `${name}: ${formatValue(callsNow)} calls vs baseline ${formatValue(callsBaseline)} over the last 24h (${(callsNow / callsBaseline).toFixed(1)}x)`,
+      });
+    }
+  }
+
   return { entities: kept, shadowedCalls };
 }
 
@@ -251,9 +282,13 @@ function analyzeIam(projectId, iam, cfg, findings) {
     for (const key of sa.userManagedKeys || []) {
       const age = daysSince(key.validAfterTime);
       const ageText = age === null ? "" : ` (${Math.round(age)}d old)`;
+      // A fresh downloadable key is ordinary estate hygiene (low); one old
+      // enough to have plausibly been forgotten about (cfg.saKeyCriticalDays)
+      // is a real risk (critical). Graduated by age, so it isn't in
+      // LEVEL_BY_KIND -- see the comment there.
       findings.push({
         key: findingKey(projectId, "sa-key", `${sa.email}:${key.name}`),
-        level: age !== null && age >= cfg.saKeyCriticalDays ? "critical" : "warn",
+        level: age !== null && age >= cfg.saKeyCriticalDays ? "critical" : "low",
         kind: "sa-key",
         text: `${sa.email} has a downloadable key${ageText} — rotate to keyless auth (ADC/workload identity) if possible`,
       });
@@ -261,12 +296,18 @@ function analyzeIam(projectId, iam, cfg, findings) {
   }
 
   for (const binding of iam.broadBindings || []) {
+    // GCP's own default agent holding a broad role is near-universal and
+    // usually not the mistake it looks like (see iam.js's DEFAULT_AGENT_RE
+    // comment) -- hygiene worth listing, not an incident, hence `low`. A
+    // hand-created service account with the same role is a real, specific
+    // risk: whoever set it up meant to grant less. Graduated on
+    // isDefaultAgent, so it isn't in LEVEL_BY_KIND -- see the comment there.
     const text = binding.isDefaultAgent
       ? `${binding.email} — GCP's default account for this project — still holds ${binding.role}; narrowing it is optional but a well-known best practice`
       : `${binding.email} holds ${binding.role} on the project — this looks like a custom account with full project access, worth reviewing`;
     findings.push({
       key: findingKey(projectId, "broad-role", `${binding.email}:${binding.role}`),
-      level: binding.isDefaultAgent ? "warn" : "critical",
+      level: binding.isDefaultAgent ? "low" : "critical",
       kind: "broad-role",
       text,
     });
@@ -275,7 +316,7 @@ function analyzeIam(projectId, iam, cfg, findings) {
   for (const apiKey of iam.unrestrictedKeys || []) {
     findings.push({
       key: findingKey(projectId, "api-key", apiKey.name),
-      level: "warn",
+      level: LEVEL_BY_KIND["api-key"],
       kind: "api-key",
       text: `API key "${apiKey.displayName || apiKey.name}" has no restrictions — anyone who gets it can use it from anywhere`,
     });
@@ -302,12 +343,14 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
     });
   }
 
-  // These are quiet and each has one specific fix, so they report however few.
+  // These are quiet and each has one specific fix, so they report however
+  // few. Severity is a flat lookup for all of them (LEVEL_BY_KIND) -- unlike
+  // errors/volume above, none of these kinds graduate by count.
   for (const [kind, count] of Object.entries(log.kinds || {})) {
     if (!ALWAYS_REPORT.has(kind)) continue;
     findings.push({
       key: findingKey(projectId, kind, "log"),
-      level: kind === "billing" || kind === "quota_exhausted" ? "critical" : "warn",
+      level: LEVEL_BY_KIND[kind],
       kind,
       text: `${count}x ${kind.replace(/_/g, " ")} in the last ${logHours}h`,
     });
@@ -378,7 +421,9 @@ function analyzeProject({
     entity.logErrors = (log.sources && log.sources[`${entity.kind}:${entity.name}`]) || 0;
   }
 
-  findings.sort((a, b) => (a.level === b.level ? 0 : a.level === "critical" ? -1 : 1));
+  // Worst first: critical, then warn, then low. LEVEL_ORDER (config.js) is
+  // the one place that ordering is defined.
+  findings.sort((a, b) => LEVEL_ORDER.indexOf(a.level) - LEVEL_ORDER.indexOf(b.level));
 
   const entitiesTotal = entities.length;
   const topErrors = (log.top || []).slice(0, LIMITS.topErrorsPerProject);

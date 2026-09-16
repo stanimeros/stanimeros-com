@@ -19,11 +19,13 @@ chronologically and is unique per run.
   "baselineDays":  14,
   "logHours":      24,
   "durationMs":    24411,
-  "status":        "critical",               // worst across projects: critical|warn|ok
-  "counts":        { "critical": 4, "warn": 2, "ok": 9, "total": 15 },
+  "status":        "critical",               // worst across projects: critical|warn|low|ok
+  "counts":        { "critical": 4, "warn": 2, "low": 1, "ok": 8, "total": 15 },
   "costTotal":     12.47,                    // billing-account total, window below
   "costCurrency":  "EUR",
   "costWindowDays": 30,
+  "costDataThrough": "2026-08-04",           // newest day present in the billing export; null if unreadable
+  "costStale":     true,                     // true when costDataThrough is null or >3 days behind now -- see A1 below
   "newFindingKeys": ["nourea:spike:firestore.reads"],  // drove the email; [] = silent run
   "projects": [ ProjectResult, ... ],
 
@@ -41,7 +43,9 @@ chronologically and is unique per run.
   "project":  "tattoo-healer",
   "name":     "Tattoo Healer",
   "plan":     "Blaze",                       // Blaze | Spark
-  "status":   "ok",                          // critical | warn | ok
+  "status":   "ok",                          // critical | warn | low | ok -- worst finding on this
+                                             // project; "ok" means zero findings, not just none
+                                             // above `low`
   "billingAccount": "01F891-9E8314-AAB92D",  // null when Spark
 
   "cost": {                                  // null when Spark or export not ready
@@ -57,9 +61,10 @@ chronologically and is unique per run.
   "findings": [                              // ordered: critical first
     {
       "key":   "tattoo-healer:spike:firestore.reads",  // stable -- drives email diffing
-      "level": "critical",                   // critical | warn
+      "level": "critical",                   // critical | warn | low -- see "Severity tiers" below
       "kind":  "spike",                      // spike|stall|failures|quota|errors|
                                              // function errors|function silent|function spike|
+                                             // run errors|run silent|run spike|
                                              // missing_index|rules_denied|quota_exhausted|
                                              // billing|deploy_failure|sa-key|broad-role|api-key
       "text":  "firestore.reads 804 vs baseline 4 (201.0x)"
@@ -114,12 +119,71 @@ One document. Lets the next run diff without reading a whole report.
 }
 ```
 
+## `health_findings/{key}`
+
+One document per finding key (plan.md S1.2) -- durable across runs, unlike the
+per-run snapshot in `health_reports`. `{key}` is the same stable finding key
+used for email diffing (`notify.js`), so it's both the document id and the
+`key` field. Upserted by the sweep after every run (`runHealthCheck`), scheduled
+*and* manual -- see the comment in `functions/lib/health/index.js` for why
+manual runs update this store but deliberately don't touch `health_state/latest`.
+
+```jsonc
+{
+  "key":       "tattoo-healer:spike:firestore.reads",
+  "project":   "tattoo-healer",
+  "level":     "critical",                   // critical | warn | low -- newest occurrence
+  "kind":      "spike",
+  "text":      "firestore.reads 804 vs baseline 4 (201.0x)",  // newest occurrence
+  "firstSeen": "2026-09-10T03:00:00Z",       // ISO-8601 UTC
+  "lastSeen":  "2026-09-16T11:33:03Z",
+  "state":     "open",                       // open | resolved | unknown | acked
+  "resolvedAt": null,                        // set the first run the key is absent from a project that WAS checked
+  "runsSeen":  14,
+  "reopenCount": 2,                          // resolved -> open again within 48h = flapping
+  "ackedUntil": null,                        // ISO-8601 UTC, or null = acked with no expiry (when state is "acked")
+  "ackedBy":   null                          // uid that called ackFinding, or null
+}
+```
+
+State transitions (plan.md S1.2/S1.3/S1.5):
+
+- Present in this run -> `open` (or stays `acked` if the ack hasn't expired
+  and the finding hasn't escalated warn -> critical, which un-acks it).
+- Absent this run, project checked cleanly -> `resolved`, `resolvedAt` set.
+- Absent this run, project in `projectErrors` (or dropped out of `PROJECTS`
+  entirely) -> `unknown`, **never** `resolved` -- this is the load-bearing
+  rule (plan.md S1.3/B2): less visibility must never read as good news.
+- `resolved` reappearing within 48h -> back to `open`, `reopenCount` += 1,
+  `firstSeen` unchanged (flapping). Reappearing later than 48h -> treated as
+  a fresh occurrence of the same key: `firstSeen` reset, `reopenCount` reset.
+
+Retention: `resolved` docs are deleted `LIMITS.lifecycleRetentionDays` (90)
+days past `resolvedAt`, in the same scheduled pass as `pruneOldReports`.
+`open`/`unknown`/`acked` are kept forever.
+
+## `health_seen/{uid}`
+
+One document per allowed uid. The "since you last visited" marker (plan.md
+S1.4) -- written only by the explicit `markHealthSeen` callable, never as a
+page-load side effect.
+
+```jsonc
+{
+  "lastViewedRunId": "2026-09-16T11-33-03Z",
+  "lastViewedAt":    "2026-09-16T12:01:00Z"
+}
+```
+
 ## Access
 
 `firestore.rules` stays **deny-all, with no exception**. The client never reads
 these collections directly. Instead a `getHealthReport` callable enforces App
 Check plus a UID allowlist server-side and reads through the Admin SDK, which
-bypasses rules entirely. See `plan.md` SS3 for why.
+bypasses rules entirely. See `plan.md` SS3 for why. `getHealthFindings`,
+`ackFinding`, `markHealthSeen` and `getHealthSeen` are the equivalent callables
+for `health_findings` and `health_seen` -- same App Check + `assertHealthAccess`
+gate, no direct client reads of either collection either.
 
 ## Limits
 
@@ -131,6 +195,7 @@ what it dropped so the UI can say "showing 25 of 41" rather than quietly lying.
 ## Retention
 
 Reports older than 180 days are deleted by the same scheduled function.
+`health_findings` has its own rule -- see that section above.
 
 ## Notes for both sides
 
@@ -140,7 +205,11 @@ Reports older than 180 days are deleted by the same scheduled function.
 - A metric absent from `metrics` means that service is not in use -- render
   nothing, not a zero.
 - `cost: null` is normal (Spark project, or export not yet producing data).
-  The UI must not show "0.00" for it.
+  The UI must not show "0.00" for it. But `cost: null` alone can't tell that
+  apart from "the export stopped and nobody noticed" -- check the report-level
+  `costStale`/`costDataThrough` for that (see A1 in `plan.md`): when
+  `costStale` is true, every `cost: null` on the report should render as
+  "no data" in amber, not as "clean, no spend".
 
 ## Amendment: rolling-24h checks + IAM/key hygiene
 
@@ -166,3 +235,48 @@ downloadable (user-managed) service-account key, a service account bound to
 no findings (not "not checked") on a project whose IAM/API-keys read grant
 hasn't rolled out yet -- see `functions/lib/health/iam.js` and
 `scripts/health-iam.sh`.
+
+## Amendment: three severity tiers (`low`)
+
+Two tiers (`critical`/`warn`) collapsed two very different things into amber:
+"this service is spiking" and "this API key has no restrictions". A third
+tier, `low`, separates them out. Ordering, worst first:
+`critical < warn < low < ok` (`LEVEL_ORDER` in `functions/lib/health/config.js`
+-- `worstLevel()` and every findings sort walk this array rather than
+hard-coding a comparison).
+
+- **`critical`** — a real failure. `errors` (any ERROR-severity log entry,
+  `cfg.criticalErrors`), `quota_exhausted`, `billing`, `deploy_failure`,
+  `function errors` / `run errors`, and a `sa-key` older than
+  `cfg.saKeyCriticalDays`.
+- **`warn`** — something is off, but nothing is currently failing. `spike`,
+  `stall`, `failures`, `function silent` / `run silent`,
+  `function spike` / `run spike`, `missing_index`, `rules_denied`.
+- **`low`** — estate hygiene: true, but not an incident, and often not
+  fixable today. `api_key_warning` / `api-key`, `service_account_warning`,
+  `broad-role` on GCP's own default agent (`iam.js`'s `isDefaultAgent`), and
+  a `sa-key` younger than `cfg.saKeyCriticalDays`.
+
+The kind -> level mapping lives in one place, `LEVEL_BY_KIND` in
+`functions/lib/health/config.js`, for every kind whose severity doesn't
+depend on the number behind it -- adding a new flat-severity kind is a
+one-line addition there. `spike`/`failures`/`quota`/`errors` (graduated by
+ratio/share/count) and `sa-key`/`broad-role` (graduated by key age /
+default-agent-ness) stay computed in `analyze.js`, next to the threshold or
+flag they key off of.
+
+A project's `status` is the worst level among its own findings
+(`worstLevel()`) -- a project whose worst finding is `low` gets status
+`"low"`, not `"warn"` and not `"ok"`. `"ok"` means **zero findings**, findings
+of any tier included. The report's own top-level `status` is the worst across
+every project the same way. `counts` gains a `low` key:
+`{ critical, warn, low, ok, total }`.
+
+**Email:** a `low` finding must never be *why* an email is sent. A run whose
+only new findings are `low` is a silent run -- `notify.js`'s
+`hasAlertableFinding()` gates sending on at least one new finding above
+`low`. A `low` finding can still ride along as context inside an email
+triggered by something else in the same run: `renderEmail` lists every
+finding of an affected project, tagged NEW or ongoing, not just the ones that
+qualified the project for inclusion. `LEVEL_COLOR` in `notify.js` has a `low`
+entry (muted, not amber) so it reads distinctly from `warn` in the mail body.

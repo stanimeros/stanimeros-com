@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { newKeys, renderEmail, subjectFor } = require("../lib/health/notify");
+const { newKeys, renderEmail, subjectFor, hasAlertableFinding, notifyIfNew } = require("../lib/health/notify");
 
 function finding(key, overrides) {
   return { key, level: "warn", kind: "spike", text: `${key} happened`, ...overrides };
@@ -94,4 +94,53 @@ test("subjectFor uses a project count when several projects are affected", () =>
   const keys = ["proj1:spike:firestore.reads", "proj2:spike:firestore.writes"];
   const subject = subjectFor(report(projects, { status: "critical" }), keys);
   assert.match(subject, /^\[CRITICAL\] 2 projects — 2 new findings$/);
+});
+
+// --- `low` findings never trigger an email on their own ---------------------
+
+test("hasAlertableFinding is false when every new key is a low finding", () => {
+  const projects = [
+    { project: "proj", name: "Proj", findings: [finding("proj:api-key:abc", { level: "low", kind: "api-key" })] },
+  ];
+  const keys = ["proj:api-key:abc"];
+  assert.equal(hasAlertableFinding(report(projects), keys), false);
+});
+
+test("hasAlertableFinding is true once at least one new key is warn or critical", () => {
+  const projects = [
+    {
+      project: "proj",
+      name: "Proj",
+      findings: [
+        finding("proj:api-key:abc", { level: "low", kind: "api-key" }),
+        finding("proj:spike:firestore.reads", { level: "warn" }),
+      ],
+    },
+  ];
+  const keys = ["proj:api-key:abc", "proj:spike:firestore.reads"];
+  assert.equal(hasAlertableFinding(report(projects), keys), true);
+});
+
+test("notifyIfNew sends nothing for a run whose only new findings are low, but still returns the keys for the dashboard's diff", async () => {
+  const projects = [
+    { project: "proj", name: "Proj", findings: [finding("proj:api-key:abc", { level: "low", kind: "api-key" })] },
+  ];
+  const result = await notifyIfNew(report(projects), [], { to: "owner@example.com" });
+  assert.equal(result.sent, false);
+  assert.deepEqual(result.keys, ["proj:api-key:abc"]);
+});
+
+test("notifyIfNew is a no-op (sent: false, keys: []) when nothing is new at all", async () => {
+  const projects = [{ project: "proj", name: "Proj", findings: [finding("proj:spike:firestore.reads")] }];
+  const result = await notifyIfNew(report(projects), ["proj:spike:firestore.reads"], {});
+  assert.equal(result.sent, false);
+  assert.deepEqual(result.keys, []);
+});
+
+test("renderEmail gives a low finding its own muted color, distinct from warn's amber", () => {
+  const lowFinding = finding("proj:api-key:abc", { level: "low", kind: "api-key", text: "unrestricted key" });
+  const projects = [{ project: "proj", name: "Proj", findings: [lowFinding], errorTruncated: false }];
+  const html = renderEmail(report(projects), ["proj:api-key:abc"], null);
+  assert.match(html, /#6b7280/);
+  assert.ok(!html.includes("#b45309"), "a low finding must not render in warn's amber");
 });

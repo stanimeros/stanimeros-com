@@ -8,6 +8,7 @@ const { sendOwnerEmail, escapeHtml } = require("./lib/mailer");
 const { ai, tools, buildSystemInstruction, MODEL } = require("./lib/gemini");
 const { checkAvailability, createBooking } = require("./lib/calendar");
 const { runHealthCheck, buildReport, REPORTS } = require("./lib/health");
+const { FINDINGS, docIdFor } = require("./lib/health/lifecycle");
 const {
   appendMessage,
   getHistory,
@@ -369,6 +370,91 @@ exports.getHealthReport = onCall({ enforceAppCheck: true }, async (request) => {
 
   if (!doc || !doc.exists) throw new HttpsError("not-found", "No report yet.");
   return doc.data();
+});
+
+// Lifecycle reads for the dashboard's "is this new / did it clear" view
+// (plan.md S1). Filters stay to at most one Firestore-level `where` (on
+// `state`) so this never needs a composite index: `since` is applied in
+// JS after the read. health_findings is a few hundred docs total, so a
+// single-field query plus an in-memory filter is cheaper than it sounds and
+// keeps this callable index-free the same way getHealthReport is.
+exports.getHealthFindings = onCall({ enforceAppCheck: true }, async (request) => {
+  assertHealthAccess(request);
+  const db = admin.firestore();
+  const { state, since } = request.data || {};
+
+  let query = /** @type {FirebaseFirestore.Query} */ (db.collection(FINDINGS));
+  if (state) query = query.where("state", "==", state);
+
+  let snap;
+  try {
+    snap = await query.get();
+  } catch (err) {
+    if (!isIndexNotReady(err)) throw err;
+    return { findings: [] };
+  }
+
+  let findings = snap.docs.map((doc) => doc.data());
+  if (since) findings = findings.filter((f) => f.lastSeen >= since);
+  return { findings };
+});
+
+// Acknowledge (mute) a finding, or clear an existing ack. `until` is an
+// optional ISO timestamp; omitted/null means "acked with no expiry" (plan.md
+// S1.5 covers the auto-un-ack: an acked finding that escalates warn ->
+// critical clears itself on the next sweep regardless of what's stored
+// here). Pass `ack: false` to clear an ack early instead of waiting for it
+// to expire.
+exports.ackFinding = onCall({ enforceAppCheck: true }, async (request) => {
+  const uid = assertHealthAccess(request);
+  const { key, until = null, ack = true } = request.data || {};
+  if (!key || typeof key !== "string") throw new HttpsError("invalid-argument", "Missing key.");
+
+  const db = admin.firestore();
+  // Same slash-encoding the sweep writes with -- the UI holds the true key.
+  const ref = db.collection(FINDINGS).doc(docIdFor(key));
+  const doc = await ref.get();
+  if (!doc.exists) throw new HttpsError("not-found", "No such finding.");
+
+  // Only `state` transitions this callable is allowed to make are
+  // open/unknown -> acked and acked -> open. Writing `state` unconditionally
+  // would let an ack toggle overwrite a `resolved` finding -- clearing an ack
+  // on something that has since cleared would mark it open again, and the
+  // dashboard would show a fixed problem as live. The ack fields themselves
+  // still move either way; only the state is guarded.
+  const current = doc.data().state;
+  if (ack) {
+    const state = current === "open" || current === "unknown" ? "acked" : current;
+    await ref.set({ state, ackedUntil: until, ackedBy: uid }, { merge: true });
+  } else {
+    const state = current === "acked" ? "open" : current;
+    await ref.set({ state, ackedUntil: null, ackedBy: null }, { merge: true });
+  }
+  return { key, acked: !!ack };
+});
+
+// Per-viewer "have I seen this" marker (plan.md S1.4). Deliberately only
+// ever called explicitly by the user (Mark all as seen, or the frontend's
+// own 30s-on-a-later-run heuristic) -- never wire this to page load, or a
+// refresh wipes the "since you last visited" window this exists to give.
+exports.markHealthSeen = onCall({ enforceAppCheck: true }, async (request) => {
+  const uid = assertHealthAccess(request);
+  const { runId } = request.data || {};
+  if (!runId || typeof runId !== "string") throw new HttpsError("invalid-argument", "Missing runId.");
+
+  const db = admin.firestore();
+  await db.collection("health_seen").doc(uid).set({
+    lastViewedRunId: runId,
+    lastViewedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+  });
+  return { ok: true };
+});
+
+exports.getHealthSeen = onCall({ enforceAppCheck: true }, async (request) => {
+  const uid = assertHealthAccess(request);
+  const db = admin.firestore();
+  const doc = await db.collection("health_seen").doc(uid).get();
+  return doc.exists ? doc.data() : { lastViewedRunId: null, lastViewedAt: null };
 });
 
 // Pure helpers, exported for unit testing only — not part of the deployed

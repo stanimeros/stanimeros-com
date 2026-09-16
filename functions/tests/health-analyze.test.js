@@ -1,8 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { analyzeProject, median, formatValue, findingKey } = require("../lib/health/analyze");
-const { DEFAULTS } = require("../lib/health/config");
+const { analyzeProject, worstLevel, median, formatValue, findingKey } = require("../lib/health/analyze");
+const { DEFAULTS, LEVEL_ORDER, LEVEL_BY_KIND } = require("../lib/health/config");
 
 function cfg(overrides) {
   return { ...DEFAULTS, ...overrides };
@@ -251,6 +251,81 @@ test("an entity's rolling calls sum across every day key the window straddles, s
   assert.equal(entity.calls, 100);
 });
 
+// --- gen-2 function / Cloud Run entity dedup --------------------------------
+//
+// A gen-2 Cloud Function *is* a Cloud Run service, so BREAKDOWNS in config.js
+// reports the same workload twice: once under its real function name, once
+// under Cloud Run's lowercased service name. Before this dedup ran ahead of
+// finding-generation, that produced two entities *and* two findings (e.g.
+// "function silent" + "run silent") for one silent function.
+
+function dayValues(value, days = 14) {
+  const out = {};
+  for (let i = 0; i < days; i++) out[`2026-08-${String(i + 1).padStart(2, "0")}`] = value;
+  return out;
+}
+
+test("a gen-2 function's matching run entity collapses to one entity and one finding, under the function's real (camelCase) name", () => {
+  const breakdowns = {
+    function: { forwardEmailWebhook: { calls: dayValues(410), errors: {} } },
+    run: { forwardemailwebhook: { calls: dayValues(410), errors: {} } },
+  };
+  const rollingBreakdowns = {
+    function: { forwardEmailWebhook: { calls: {}, errors: {} } }, // silent today
+    run: { forwardemailwebhook: { calls: {}, errors: {} } },
+  };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns }));
+
+  assert.equal(result.entities.length, 1, "the run shadow must not survive as its own entity");
+  assert.equal(result.entities[0].name, "forwardEmailWebhook");
+  assert.equal(result.entities[0].kind, "function");
+
+  const silentFindings = result.findings.filter((f) => f.kind === "function silent" || f.kind === "run silent");
+  assert.equal(silentFindings.length, 1, "must not report both a function silent and a run silent finding");
+  assert.equal(silentFindings[0].kind, "function silent");
+  assert.equal(silentFindings[0].key, "proj:function.silent:forwardEmailWebhook");
+});
+
+test("a standalone Cloud Run service with no matching function name still reports as kind run", () => {
+  const breakdowns = { run: { standaloneApi: { calls: dayValues(410), errors: {} } } };
+  const rollingBreakdowns = { run: { standaloneApi: { calls: {}, errors: {} } } };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns }));
+
+  assert.equal(result.entities.length, 1);
+  assert.equal(result.entities[0].kind, "run");
+  const finding = result.findings.find((f) => f.kind === "run silent");
+  assert.ok(finding, "a genuine standalone Run service must still be checked");
+});
+
+test("a function with no run counterpart is unaffected by the dedup", () => {
+  const breakdowns = { function: { onlyAFunction: { calls: dayValues(150), errors: {} } } };
+  const rollingBreakdowns = { function: { onlyAFunction: { calls: {}, errors: {} } } };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns }));
+
+  assert.equal(result.entities.length, 1);
+  assert.equal(result.entities[0].kind, "function");
+  assert.ok(result.findings.some((f) => f.kind === "function silent"));
+});
+
+test("the surviving entity keeps only the function's own numbers -- the two sources are not summed", () => {
+  // function/execution_count and run/request_count measure different things
+  // (invocations vs. HTTP requests); if they were summed, a gen-2 function
+  // with 100 calls on each side would read as 200.
+  const breakdowns = {
+    function: { forwardEmailWebhook: { calls: dayValues(50), errors: {} } },
+    run: { forwardemailwebhook: { calls: dayValues(999), errors: {} } }, // deliberately different
+  };
+  const rollingBreakdowns = {
+    function: { forwardEmailWebhook: { calls: { "2026-09-16": 100 }, errors: {} } },
+    run: { forwardemailwebhook: { calls: { "2026-09-16": 100 }, errors: {} } },
+  };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns }));
+
+  assert.equal(result.entities.length, 1);
+  assert.equal(result.entities[0].calls, 100, "calls must come from the function side only, not summed to 200");
+  assert.equal(result.entities[0].callsBaseline, 50, "baseline must come from the function side only, not the run side's 999");
+});
+
 test("run.requests does not double-report a gen-2 function's own spike under a second metric name", () => {
   // A fully-shadowed project: one function entity, one identically-named run
   // entity with the same rolling call count -- dropRunShadows removes the
@@ -305,14 +380,17 @@ test("run.requests findings are suppressed project-wide once any shadowing exist
 
 // --- log errors (no floor) --------------------------------------------------
 
-test("a single real error log entry produces a warn finding and a non-ok status -- no floor, unlike the Monitoring-derived checks", () => {
+test("a single real error log entry is critical -- no floor, unlike the Monitoring-derived checks", () => {
   const result = analyzeProject(
     baseArgs({ log: { count: 1, truncated: false, kinds: {}, sources: { "function:x": 1 }, top: [] } })
   );
   const finding = result.findings.find((f) => f.kind === "errors");
   assert.ok(finding, "a single error must not be invisible to findings/status");
-  assert.equal(finding.level, "warn");
-  assert.equal(result.status, "warn");
+  // Errors are red, warnings are amber, and a clean project is green -- an
+  // error must not wear the same colour as an unrestricted API key
+  // (cfg.criticalErrors, which a noisy project can raise in OVERRIDES).
+  assert.equal(finding.level, "critical");
+  assert.equal(result.status, "critical");
 });
 
 test("log errors escalate to critical at cfg.criticalErrors", () => {
@@ -427,7 +505,7 @@ test("analyzeIam is a no-op when iam is null (e.g. the grant hasn't rolled out t
   assert.equal(result.findings.length, 0);
 });
 
-test("analyzeIam flags a user-managed service-account key, warn under the age threshold", () => {
+test("analyzeIam flags a user-managed service-account key as low (hygiene) under the age threshold", () => {
   const iam = {
     serviceAccounts: [
       { email: "sa@proj.iam.gserviceaccount.com", userManagedKeys: [{ name: "k1", validAfterTime: new Date().toISOString() }] },
@@ -438,7 +516,7 @@ test("analyzeIam flags a user-managed service-account key, warn under the age th
   const result = analyzeProject(baseArgs({ iam }));
   const finding = result.findings.find((f) => f.kind === "sa-key");
   assert.ok(finding, "expected a sa-key finding");
-  assert.equal(finding.level, "warn");
+  assert.equal(finding.level, "low");
   assert.equal(finding.key, "proj:sa-key:sa@proj.iam.gserviceaccount.com:k1");
 });
 
@@ -467,7 +545,7 @@ test("analyzeIam flags a custom service account bound to roles/owner or roles/ed
   assert.equal(finding.level, "critical");
 });
 
-test("analyzeIam flags GCP's own default agent holding a broad role as only a warn", () => {
+test("analyzeIam flags GCP's own default agent holding a broad role as only low (hygiene, not an incident)", () => {
   const iam = {
     serviceAccounts: [],
     broadBindings: [{ role: "roles/editor", email: "proj@appspot.gserviceaccount.com", isDefaultAgent: true }],
@@ -475,16 +553,59 @@ test("analyzeIam flags GCP's own default agent holding a broad role as only a wa
   };
   const result = analyzeProject(baseArgs({ iam }));
   const finding = result.findings.find((f) => f.kind === "broad-role");
-  assert.equal(finding.level, "warn");
+  assert.equal(finding.level, "low");
   assert.match(finding.text, /default account/);
 });
 
-test("analyzeIam flags an unrestricted API key", () => {
+test("analyzeIam flags an unrestricted API key as low", () => {
   const iam = { serviceAccounts: [], broadBindings: [], unrestrictedKeys: [{ name: "abc", displayName: "Maps key" }] };
   const result = analyzeProject(baseArgs({ iam }));
   const finding = result.findings.find((f) => f.kind === "api-key");
   assert.ok(finding, "expected an api-key finding");
+  assert.equal(finding.level, "low");
   assert.match(finding.text, /Maps key/);
+});
+
+// --- three severity tiers ----------------------------------------------------
+
+test("LEVEL_BY_KIND holds every flat-severity kind, and none of the graduated ones", () => {
+  assert.equal(LEVEL_BY_KIND.quota_exhausted, "critical");
+  assert.equal(LEVEL_BY_KIND.billing, "critical");
+  assert.equal(LEVEL_BY_KIND.deploy_failure, "critical");
+  assert.equal(LEVEL_BY_KIND.stall, "warn");
+  assert.equal(LEVEL_BY_KIND.missing_index, "warn");
+  assert.equal(LEVEL_BY_KIND.rules_denied, "warn");
+  assert.equal(LEVEL_BY_KIND["function silent"], "warn");
+  assert.equal(LEVEL_BY_KIND["run silent"], "warn");
+  assert.equal(LEVEL_BY_KIND["function spike"], "warn");
+  assert.equal(LEVEL_BY_KIND["run spike"], "warn");
+  assert.equal(LEVEL_BY_KIND.api_key_warning, "low");
+  assert.equal(LEVEL_BY_KIND.service_account_warning, "low");
+  assert.equal(LEVEL_BY_KIND["api-key"], "low");
+  // Graduated kinds decide their own level in analyze.js, by design -- see
+  // the comment on LEVEL_BY_KIND in config.js.
+  for (const kind of ["spike", "failures", "quota", "errors", "sa-key", "broad-role"]) {
+    assert.equal(kind in LEVEL_BY_KIND, false, `${kind} is graduated by magnitude, not a flat lookup`);
+  }
+});
+
+test("worstLevel orders critical < warn < low < ok, and no findings is the only way to reach ok", () => {
+  assert.equal(worstLevel([]), "ok");
+  assert.equal(worstLevel([{ level: "low" }]), "low");
+  assert.equal(worstLevel([{ level: "low" }, { level: "warn" }]), "warn");
+  assert.equal(worstLevel([{ level: "low" }, { level: "warn" }, { level: "critical" }]), "critical");
+  assert.equal(worstLevel([{ level: "warn" }, { level: "low" }]), "warn");
+  // Order of LEVEL_ORDER itself, since worstLevel walks it rather than
+  // hard-coding a comparison.
+  assert.deepEqual(LEVEL_ORDER, ["critical", "warn", "low", "ok"]);
+});
+
+test("a project whose only findings are low gets status low, not warn and not ok", () => {
+  const iam = { serviceAccounts: [], broadBindings: [], unrestrictedKeys: [{ name: "abc", displayName: "Maps key" }] };
+  const result = analyzeProject(baseArgs({ iam }));
+  assert.equal(result.findings.length, 1);
+  assert.equal(result.findings[0].level, "low");
+  assert.equal(result.status, "low");
 });
 
 test("a project with any critical finding gets status critical, even alongside warns", () => {

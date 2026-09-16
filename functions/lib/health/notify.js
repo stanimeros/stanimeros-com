@@ -7,7 +7,7 @@
 
 const { sendOwnerEmail, escapeHtml } = require("../mailer");
 
-const LEVEL_COLOR = { critical: "#b91c1c", warn: "#b45309" };
+const LEVEL_COLOR = { critical: "#b91c1c", warn: "#b45309", low: "#6b7280" };
 
 function newKeys(report, previousKeys) {
   const seen = new Set(previousKeys || []);
@@ -18,6 +18,31 @@ function newKeys(report, previousKeys) {
     }
   }
   return keys;
+}
+
+// The level a finding key carries in this report, or null if the key isn't
+// present (shouldn't happen for a key `newKeys` just derived from this same
+// report, but a missing lookup should mean "not exempt" rather than throw).
+function levelOf(report, key) {
+  for (const project of report.projects) {
+    const finding = project.findings.find((f) => f.key === key);
+    if (finding) return finding.level;
+  }
+  return null;
+}
+
+// True when at least one of the new keys is worth waking someone up over.
+// `low` findings are estate hygiene (an unrestricted API key, GCP's default
+// agent still holding roles/editor, ...) -- true, but not an incident, and
+// often not fixable today. A run whose *only* new findings are `low` must
+// stay silent: three runs a day would otherwise mail the same "unrestricted
+// key" notice on the same cadence as a real outage, and the alert would stop
+// being read. They still ride along as context inside an email triggered by
+// something else -- renderEmail lists every finding of an affected project,
+// not just the ones that qualified it -- so nothing about them is hidden,
+// only the trigger is gated.
+function hasAlertableFinding(report, keys) {
+  return keys.some((key) => levelOf(report, key) !== "low");
 }
 
 function subjectFor(report, keys) {
@@ -89,12 +114,14 @@ function renderEmail(report, keys, dashboardUrl) {
 }
 
 /**
- * Sends only when there is something new. Returns the keys that were mailed,
- * which the caller records so the next run can diff against them.
+ * Sends only when there is something new *and* alertable. Returns the keys
+ * that are new in this run either way (even when nothing was mailed) --
+ * runHealthCheck still wants that list for the dashboard's "new" indicator
+ * and to arm the next run's diff, per the header comment on `low`.
  */
 async function notifyIfNew(report, previousKeys, { to = null, dashboardUrl = null } = {}) {
   const keys = newKeys(report, previousKeys);
-  if (!keys.length) return { sent: false, keys: [] };
+  if (!keys.length || !hasAlertableFinding(report, keys)) return { sent: false, keys };
 
   await sendOwnerEmail({
     subject: subjectFor(report, keys),
@@ -104,4 +131,4 @@ async function notifyIfNew(report, previousKeys, { to = null, dashboardUrl = nul
   return { sent: true, keys };
 }
 
-module.exports = { notifyIfNew, newKeys, renderEmail, subjectFor };
+module.exports = { notifyIfNew, newKeys, hasAlertableFinding, renderEmail, subjectFor };

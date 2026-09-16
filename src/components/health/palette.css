@@ -1,0 +1,79 @@
+/*
+ * Health dashboard chart palette (plan.md, "Chart layer").
+ *
+ * The one law: on this page color means severity and nothing else. Status
+ * colors below are reserved for status and never reused for quantity.
+ * Quantity charts use the monochrome sequential scale. Only the two identity
+ * charts (error kinds, cost by service) use the categorical set, capped at
+ * four fixed slots so a category keeps its color across every row on the
+ * page.
+ *
+ * All values are the ones validated in plan.md against this page's two
+ * surfaces (white; dark card #262626) for colorblind separation and
+ * contrast. Do not substitute Tailwind palette values here.
+ *
+ * Written theme-aware from the start (ahead of plan.md 5.4's light/dark
+ * toggle): light values live on :root, dark values apply automatically via
+ * prefers-color-scheme, and an explicit [data-theme="dark"] / [data-theme=
+ * "light"] on the root element overrides the system preference either way.
+ */
+
+:root {
+  /* Status — reserved, never used for anything else. Identical in both
+     themes; already validated against white and the dark card. */
+  --hc-critical: #d03b3b;
+  --hc-warn: #fab219;
+  --hc-good: #0ca30c;
+  /* Estate hygiene, not an incident — a muted slate/blue-grey, deliberately
+     not a fourth saturated hue and not readable as amber or green. */
+  --hc-low: #64748b;
+
+  /* Sequential (all quantity charts), light -> dark. Same in both themes. */
+  --hc-seq-1: #cde2fb;
+  --hc-seq-2: #9ec5f4;
+  --hc-seq-3: #6da7ec;
+  --hc-seq-4: #3987e5;
+  --hc-seq-5: #2a78d6;
+  --hc-seq-6: #256abf;
+  --hc-seq-7: #184f95;
+
+  /* Categorical (C5/C6 only), fixed slot order, light variant. */
+  --hc-cat-1: #2a78d6;
+  --hc-cat-2: #eb6834;
+  --hc-cat-3: #1baf7a;
+  --hc-cat-4: #eda100;
+
+  /* Recessive chrome: hairline grid/axis and the meter threshold tick. */
+  --hc-grid: rgba(0, 0, 0, 0.14);
+  /* Baseline reference line (Series). The only dashed stroke on the page. */
+  --hc-baseline: rgba(0, 0, 0, 0.42);
+  /* Empty meter/band track. */
+  --hc-track: rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --hc-cat-1: #3987e5;
+    --hc-cat-2: #d95926;
+    --hc-cat-3: #199e70;
+    --hc-cat-4: #c98500;
+    /* Lighter slate so it still reads against a dark card. */
+    --hc-low: #94a3b8;
+
+    --hc-grid: rgba(255, 255, 255, 0.16);
+    --hc-baseline: rgba(255, 255, 255, 0.46);
+    --hc-track: rgba(255, 255, 255, 0.12);
+  }
+}
+
+:root[data-theme="dark"] {
+  --hc-cat-1: #3987e5;
+  --hc-cat-2: #d95926;
+  --hc-cat-3: #199e70;
+  --hc-cat-4: #c98500;
+  --hc-low: #94a3b8;
+
+  --hc-grid: rgba(255, 255, 255, 0.16);
+  --hc-baseline: rgba(255, 255, 255, 0.46);
+  --hc-track: rgba(255, 255, 255, 0.12);
+}

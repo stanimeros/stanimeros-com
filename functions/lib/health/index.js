@@ -11,10 +11,11 @@ const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, LIMITS, thresholdsFor } 
 const { getAccessToken } = require("./auth");
 const { timeseries, breakdown, windowFor, rollingWindow } = require("./monitoring");
 const { readErrors } = require("./logging");
-const { fetchCosts, fetchBillingTotal } = require("./billing");
+const { fetchCosts, fetchBillingTotal, fetchCostDataThrough } = require("./billing");
 const { collectIam } = require("./iam");
 const { analyzeProject, worstLevel } = require("./analyze");
 const { notifyIfNew, newKeys } = require("./notify");
+const { updateLifecycle, pruneLifecycle } = require("./lifecycle");
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -105,10 +106,23 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
   const cfg = thresholdsFor(null);
 
   const ids = projects.map((p) => p.id);
-  const [costs, total] = await Promise.all([
-    fetchCosts(ids, { token, datasetProject: HOST_PROJECT, datasetId: process.env.HEALTH_BILLING_DATASET }),
-    fetchBillingTotal({ token, datasetProject: HOST_PROJECT, datasetId: process.env.HEALTH_BILLING_DATASET }),
+  const billingOpts = { token, datasetProject: HOST_PROJECT, datasetId: process.env.HEALTH_BILLING_DATASET };
+  const [costs, total, costDataThrough] = await Promise.all([
+    fetchCosts(ids, billingOpts),
+    fetchBillingTotal(billingOpts),
+    fetchCostDataThrough(billingOpts),
   ]);
+
+  // A1: `cost: null` on its own can't tell "Spark project, normal" apart
+  // from "the export died six weeks ago" -- both look identical to every
+  // windowed query. costDataThrough is the newest day the export actually
+  // has; costStale says whether that's still fresh enough to trust. A daily
+  // export that's more than a couple of days behind isn't running, so this
+  // deliberately doesn't wait for a whole missed window before saying so.
+  const COST_STALE_AFTER_DAYS = 3;
+  const costStale =
+    costDataThrough == null ||
+    Date.now() - new Date(`${costDataThrough}T00:00:00Z`).getTime() > COST_STALE_AFTER_DAYS * 86400000;
 
   const projectErrors = [];
   const results = await mapWithLimit(projects, CONCURRENCY, async (project) => {
@@ -143,7 +157,7 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
   });
 
   const checked = results.filter(Boolean);
-  const counts = { critical: 0, warn: 0, ok: 0, total: projects.length };
+  const counts = { critical: 0, warn: 0, low: 0, ok: 0, total: projects.length };
   for (const result of checked) counts[result.status] += 1;
 
   return {
@@ -158,6 +172,8 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
     costTotal: total ? total.costTotal : null,
     costCurrency: total ? total.costCurrency : "EUR",
     costWindowDays: total ? total.costWindowDays : 30,
+    costDataThrough,
+    costStale,
     newFindingKeys: [],
     projects: checked,
     projectErrors,
@@ -231,7 +247,18 @@ async function runHealthCheck({ mode = "scheduled" } = {}) {
     }, { merge: true });
   }
 
+  // Unlike health_state/latest above, health_findings is updated on every
+  // run, manual included (plan.md S1.8). The two stores exist for different
+  // reasons: health_state/latest arms the next scheduled email, and a manual
+  // run must leave it alone or "Run now" would silently disarm that email.
+  // health_findings is just bookkeeping over what actually happened -- if
+  // you hit "Run now" after a fix, seeing the finding move to resolved is
+  // the whole point. Do not couple these two stores to "fix" that asymmetry;
+  // it's deliberate.
+  await updateLifecycle(db, report, new Date(report.generated));
+
   const pruned = await pruneOldReports(db);
+  await pruneLifecycle(db, LIMITS.lifecycleRetentionDays);
 
   return {
     runId: report.runId,

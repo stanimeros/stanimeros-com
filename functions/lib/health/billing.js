@@ -117,6 +117,20 @@ function buildQuery({ datasetProject, datasetId, tableId }) {
   `;
 }
 
+// No window, no project filter -- just "what's the newest day this export
+// actually has". Cheap (MAX over one column) and it's the only way to tell
+// "cost: null because this is a Spark project" apart from "cost: null
+// because the export died six weeks ago" (plan.md A1) -- a stopped export
+// still answers every windowed query with zero rows, identically to a
+// Spark project that genuinely has no spend.
+function buildLatestDayQuery({ datasetProject, datasetId, tableId }) {
+  assertIdentifier(datasetProject, "datasetProject");
+  assertIdentifier(datasetId, "datasetId");
+  assertIdentifier(tableId, "tableId");
+  const table = `\`${datasetProject}.${datasetId}.${tableId}\``;
+  return `SELECT MAX(DATE(usage_start_time)) AS day FROM ${table}`;
+}
+
 // Same shape, no per-service/day breakdown, no project filter -- used for
 // the report-level billing-account total.
 function buildTotalQuery({ datasetProject, datasetId, tableId }) {
@@ -295,8 +309,31 @@ async function fetchBillingTotal(opts) {
   }
 }
 
+// -> "2026-08-04" | null. One extra query per run, no window, no project
+// filter -- see buildLatestDayQuery. Degrades to null on any failure
+// (export not ready, or anything else) exactly like fetchCosts/
+// fetchBillingTotal: the sweep must never fail because the cost side is
+// having a bad day.
+async function fetchCostDataThrough(opts) {
+  const { token, datasetProject, datasetId, tableId = defaultTableId() } = opts || {};
+
+  try {
+    const query = buildLatestDayQuery({ datasetProject, datasetId, tableId });
+    const rows = await runQuery(query, [], { token, datasetProject });
+    return (rows[0] && rows[0].day) || null;
+  } catch (err) {
+    if (isExportNotReady(err)) {
+      console.log(`billing: export not ready (${datasetProject}.${datasetId}.${tableId}) -- costDataThrough null`);
+    } else {
+      console.error("billing: fetchCostDataThrough failed", err);
+    }
+    return null;
+  }
+}
+
 module.exports = {
   fetchCosts,
   fetchBillingTotal,
+  fetchCostDataThrough,
   defaultTableId,
 };
