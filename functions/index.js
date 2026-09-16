@@ -305,6 +305,16 @@ exports.runHealthCheckNow = onCall(
   }
 );
 
+// Firestore's automatic single-field index for a field isn't provisioned
+// until the first document carrying that field is written, so an
+// orderBy("runId", ...) query can throw FAILED_PRECONDITION ("requires an
+// index") if it races the very first sweep, or if pruneOldReports ever empties
+// the collection between the health-schema being deployed and the next run.
+// Both are "no reports yet", not a real error.
+function isIndexNotReady(err) {
+  return err.code === 9 || /FAILED_PRECONDITION/.test(err.message || "");
+}
+
 // The dashboard's only data path. Reading through the Admin SDK here is what
 // lets firestore.rules stay deny-all — the client never touches Firestore.
 exports.getHealthReport = onCall({ enforceAppCheck: true }, async (request) => {
@@ -313,11 +323,17 @@ exports.getHealthReport = onCall({ enforceAppCheck: true }, async (request) => {
   const { runId, history } = request.data || {};
 
   if (history) {
-    const snap = await db
-      .collection(REPORTS)
-      .orderBy("runId", "desc")
-      .limit(Math.min(Number(history) || 30, 120))
-      .get();
+    let snap;
+    try {
+      snap = await db
+        .collection(REPORTS)
+        .orderBy("runId", "desc")
+        .limit(Math.min(Number(history) || 30, 120))
+        .get();
+    } catch (err) {
+      if (!isIndexNotReady(err)) throw err;
+      return { runs: [] };
+    }
     // Trend only — sending 30 full reports would be megabytes.
     return {
       runs: snap.docs.map((doc) => {
@@ -334,12 +350,18 @@ exports.getHealthReport = onCall({ enforceAppCheck: true }, async (request) => {
     };
   }
 
-  const doc = runId
-    ? await db.collection(REPORTS).doc(runId).get()
-    : (await db.collection(REPORTS)
-        .orderBy("runId", "desc")
-        .limit(1)
-        .get()).docs[0];
+  let doc;
+  try {
+    doc = runId
+      ? await db.collection(REPORTS).doc(runId).get()
+      : (await db.collection(REPORTS)
+          .orderBy("runId", "desc")
+          .limit(1)
+          .get()).docs[0];
+  } catch (err) {
+    if (!isIndexNotReady(err)) throw err;
+    doc = undefined;
+  }
 
   if (!doc || !doc.exists) throw new HttpsError("not-found", "No report yet.");
   return doc.data();

@@ -19,9 +19,9 @@
     "@google/genai": "^1.9.0",
     "dotenv": "^17.2.1",
     "firebase-admin": "^12.6.0",
-    "firebase-functions": "^6.0.1",
+    "firebase-functions": "^7.4.0",
     "googleapis": "^144.0.0",
-    "nodemailer": "^8.0.9"
+    "nodemailer": "^10.0.10"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -32,6 +32,7 @@
   },
   "private": true,
   "overrides": {
-    "uuid": "^14.0.0"
+    "uuid": "^14.0.0",
+    "ts-deepmerge": "^8.0.0"
   }
 }
