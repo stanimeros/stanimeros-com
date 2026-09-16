@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
@@ -8,6 +7,7 @@ import { Section, SectionHeading, MutedLink } from "@/components/ui/section"
 import ProcessSection from "@/components/ProcessSection"
 import Testimonials from "@/components/Testimonials"
 import { ProjectCard } from "@/components/ProjectCard"
+import { AnimatedCard } from "@/components/AnimatedCard"
 import {
   ArrowLeftIcon,
   ArrowTopRightOnSquareIcon,
@@ -17,7 +17,7 @@ import {
 } from "@heroicons/react/24/outline"
 import { cn } from "@/lib/utils"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
+import { useScrollAnimation } from "@/lib/hooks"
 import { getProjectBySlug, projectItems, keyToSlug } from "@/lib/projects-data"
 
 interface ProjectDetailProps {
@@ -34,11 +34,6 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
   const ctaRef = useRef<HTMLElement>(null)
   const relatedAnimation = useScrollAnimation(relatedRef)
   const ctaAnimation = useScrollAnimation(ctaRef)
-
-  // Refs for card animations. Fixed size (3) since `related` below is always
-  // sliced from this many candidates at most — computed before any early
-  // return so hook count never varies across renders.
-  const relatedCardRefs = Array(3).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   useEffect(() => {
     trackEvent("pageView", { page: `projects/${slug}` })
@@ -157,12 +152,7 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
             <SectionHeading icon={Squares2X2Icon} title={t("projectDetail.relatedTitle")} />
             <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 w-full">
               {related.map((relatedItem, index) => (
-                <motion.div
-                  key={relatedItem.key}
-                  ref={relatedCardRefs[index]}
-                  {...useMobileCardAnimation(relatedCardRefs[index], index)}
-                  className="md:transform-none w-full"
-                >
+                <AnimatedCard key={relatedItem.key} index={index} className="md:transform-none w-full">
                   <ProjectCard
                     title={t(`projects.items.${relatedItem.key}.title`)}
                     description={t(`projects.items.${relatedItem.key}.description`)}
@@ -176,7 +166,7 @@ export default function ProjectDetail({ lang, slug }: ProjectDetailProps) {
                     caseStudyHref={`${prefix}/projects/${keyToSlug(relatedItem.key)}`}
                     storeLinks={relatedItem.storeLinks}
                   />
-                </motion.div>
+                </AnimatedCard>
               ))}
             </div>
             <div className="text-center mt-10">

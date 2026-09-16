@@ -1,8 +1,8 @@
 import { useRef } from "react"
-import { motion } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { Section, SectionHeading } from "@/components/ui/section"
-import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
+import { AnimatedCard } from "@/components/AnimatedCard"
+import { useScrollAnimation } from "@/lib/hooks"
 import UnderlineHighlight from "@/components/UnderlineHighlight"
 import {
   ArrowPathIcon,
@@ -25,9 +25,6 @@ export default function WhySection() {
   const sectionRef = useRef<HTMLElement>(null)
   const animation = useScrollAnimation(sectionRef)
 
-  // Refs for card animations
-  const painPointCardRefs = Array(painPoints.length).fill(null).map(() => useRef<HTMLDivElement>(null))
-
   return (
     <Section ref={sectionRef} id="why" className="relative" {...animation}>
 
@@ -43,10 +40,9 @@ export default function WhySection() {
 
         <div className="max-w-3xl mx-auto">
           {painPoints.map(({ key, icon: Icon }, index) => (
-            <motion.div
+            <AnimatedCard
               key={key}
-              ref={painPointCardRefs[index]}
-              {...useMobileCardAnimation(painPointCardRefs[index], index)}
+              index={index}
               className="md:transform-none w-full flex gap-6 mb-12 last:mb-0 group"
             >
               <div className="flex flex-col items-center gap-2 shrink-0">
@@ -65,7 +61,7 @@ export default function WhySection() {
                   {t(`why.items.${key}.description`)}
                 </p>
               </div>
-            </motion.div>
+            </AnimatedCard>
           ))}
         </div>
 

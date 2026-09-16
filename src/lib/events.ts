@@ -17,11 +17,13 @@ const eventMap = {
   },
 };
 
-declare global { interface Window { fbq: any; } }
+import type { FbqFunction } from "./pixel";
+
+declare global { interface Window { fbq: FbqFunction; } }
 
 export const trackEvent = (
   eventKey: keyof typeof eventMap,
-  data?: Record<string, any>
+  data?: Record<string, unknown>
 ) => {
   const mapping = eventMap[eventKey];
 

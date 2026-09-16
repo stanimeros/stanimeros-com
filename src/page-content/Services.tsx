@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
+import { motion, type HTMLMotionProps } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Section, SectionHeading, MutedLink } from "@/components/ui/section"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { ProjectCard } from "@/components/ProjectCard"
+import { AnimatedCard } from "@/components/AnimatedCard"
 import ProcessSection from "@/components/ProcessSection"
 import Testimonials from "@/components/Testimonials"
 import {
@@ -25,7 +26,7 @@ import {
   QuestionMarkCircleIcon,
 } from "@heroicons/react/24/outline"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
+import { useScrollAnimation } from "@/lib/hooks"
 import { projectItems, keyToSlug } from "@/lib/projects-data"
 
 const items = [
@@ -99,11 +100,6 @@ export default function Services({ lang }: ServicesProps) {
   const projectsRef = useRef<HTMLElement>(null)
   const ctaRef = useRef<HTMLElement>(null)
 
-  // Refs for card animations
-  const itemCardRefs = Array(items.length).fill(null).map(() => useRef<HTMLDivElement>(null))
-  const packageCardRefs = Array(packages.length).fill(null).map(() => useRef<HTMLDivElement>(null))
-  const projectCardRefs = Array(projectItems.length).fill(null).map(() => useRef<HTMLDivElement>(null))
-
   const heroAnimation = useScrollAnimation(heroRef)
   const itemsAnimation = useScrollAnimation(itemsRef)
   const packagesAnimation = useScrollAnimation(packagesRef)
@@ -135,12 +131,7 @@ export default function Services({ lang }: ServicesProps) {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
             {items.map(({ key, icon: Icon }, index) => (
-              <motion.div
-                key={key}
-                ref={itemCardRefs[index]}
-                {...useMobileCardAnimation(itemCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={key} index={index} className="md:transform-none w-full">
                 <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-2 h-full flex flex-col bg-card/70 hover:bg-card/70">
                   <CardHeader className="text-center flex-none">
                     <div className="mx-auto mb-4 text-primary">
@@ -154,7 +145,7 @@ export default function Services({ lang }: ServicesProps) {
                     </CardDescription>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
         </div>
@@ -175,12 +166,7 @@ export default function Services({ lang }: ServicesProps) {
           </SectionHeading>
           <div className="grid md:grid-cols-3 gap-8 w-full">
             {packages.map((pkg, index) => (
-              <motion.div
-                key={pkg.title}
-                ref={packageCardRefs[index]}
-                {...useMobileCardAnimation(packageCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={pkg.title} index={index} className="md:transform-none w-full">
                 <Card className={`relative flex flex-col hover:shadow-lg transition-all duration-300 h-full bg-card/70 hover:bg-card/70 ${pkg.className}`}>
                   <CardHeader className="flex-none">
                     <div className="flex items-center justify-between">
@@ -217,7 +203,7 @@ export default function Services({ lang }: ServicesProps) {
                     </Button>
                   </div>
                 </Card>
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
           <Card className="mt-8 border-border/60 bg-card/70 w-full">
@@ -290,12 +276,7 @@ export default function Services({ lang }: ServicesProps) {
           <SectionHeading icon={BriefcaseIcon} title={t("projects.title")} />
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
             {projectItems.map((item, index) => (
-              <motion.div
-                key={item.key}
-                ref={projectCardRefs[index]}
-                {...useMobileCardAnimation(projectCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={item.key} index={index} className="md:transform-none w-full">
                 <ProjectCard
                   title={t(`projects.items.${item.key}.title`)}
                   description={t(`projects.items.${item.key}.description`)}
@@ -308,7 +289,7 @@ export default function Services({ lang }: ServicesProps) {
                   url={item.url}
                   caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
                 />
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
           <div className="text-center mt-10">

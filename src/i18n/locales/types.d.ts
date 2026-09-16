@@ -1,13 +1,9 @@
 declare module '*/locales/en' {
-  const content: {
-    [key: string]: any;
-  };
+  const content: Record<string, unknown>;
   export default content;
 }
 
 declare module '*/locales/el' {
-  const content: {
-    [key: string]: any;
-  };
+  const content: Record<string, unknown>;
   export default content;
 }

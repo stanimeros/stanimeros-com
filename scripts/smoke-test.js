@@ -25,6 +25,9 @@ const pages = [
   { path: '/contact', lang: 'en' },
   { path: '/privacy-policy', lang: 'en' },
   { path: '/data-deletion', lang: 'en' },
+  // Internal dashboard: the static shell is public (the data behind it isn't),
+  // so it's checked like any other page — a 200 and a title.
+  { path: '/health', lang: 'en' },
   ...appSlugs.map((slug) => ({ path: `/data-deletion/${slug}`, lang: 'en' })),
   ...appSlugs.map((slug) => ({ path: `/privacy-policy/${slug}`, lang: 'en' })),
   ...downloadSlugs.map((slug) => ({ path: `/${slug}`, lang: 'en' })),

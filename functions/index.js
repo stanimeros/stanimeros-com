@@ -1,11 +1,13 @@
 const { setGlobalOptions } = require("firebase-functions");
-const { onCall } = require("firebase-functions/v2/https");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const admin = require("firebase-admin");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 
 const { sendOwnerEmail, escapeHtml } = require("./lib/mailer");
 const { ai, tools, buildSystemInstruction, MODEL } = require("./lib/gemini");
 const { checkAvailability, createBooking } = require("./lib/calendar");
+const { runHealthCheck, buildReport, REPORTS } = require("./lib/health");
 const {
   appendMessage,
   getHistory,
@@ -241,7 +243,106 @@ exports.agentReport = onSchedule(
   }
 );
 
+// --------------------------------------------------------------------------
+// Firebase health checker — see plan.md and docs/health-schema.md
+// --------------------------------------------------------------------------
+
+// Only this UID may read health data. Kept server-side rather than in
+// firestore.rules so the ruleset stays deny-all with no exception, and the
+// allowlist itself is never shipped to the browser.
+const HEALTH_UIDS = (process.env.HEALTH_ALLOWED_UIDS || "")
+  .split(",")
+  .map((uid) => uid.trim())
+  .filter(Boolean);
+
+function assertHealthAccess(request) {
+  const uid = request.auth && request.auth.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
+  if (!HEALTH_UIDS.includes(uid)) throw new HttpsError("permission-denied", "Not allowed.");
+  return uid;
+}
+
+// Runs as health-checker@stanimeros-dev, which holds monitoring.viewer +
+// logging.viewer across the estate. Retries are off on purpose: a retried run
+// would re-send the alert mail. maxInstances 1 keeps two sweeps from racing to
+// write the same state document.
+const HEALTH_OPTIONS = {
+  serviceAccount: "health-checker@stanimeros-dev.iam.gserviceaccount.com",
+  timeoutSeconds: 540,
+  memory: /** @type {import("firebase-functions/v2/options").MemoryOption} */ ("512MiB"),
+  maxInstances: 1,
+};
+
+// Once a day, not three times: every metric-based finding is scored off
+// *yesterday's* complete UTC day (see monitoring.js windowFor) regardless of
+// how often this runs, so extra runs on the same day would just re-score the
+// same numbers. Only the 24h-rolling log findings would benefit from more
+// frequent runs, and that's not worth the extra alert-fatigue risk.
+// 9am Athens gives the UTC day (ends 00:00 UTC = 03:00 Athens) time to settle
+// in Monitoring before the sweep reads it.
+exports.healthCheck = onSchedule(
+  {
+    ...HEALTH_OPTIONS,
+    schedule: "0 9 * * *",
+    timeZone: "Europe/Athens",
+    retryCount: 0,
+  },
+  async () => {
+    const summary = await runHealthCheck({ mode: "scheduled" });
+    logger.info("Health sweep complete", summary);
+  }
+);
+
+// On-demand run from the dashboard.
+exports.runHealthCheckNow = onCall(
+  { ...HEALTH_OPTIONS, enforceAppCheck: true },
+  async (request) => {
+    assertHealthAccess(request);
+    return runHealthCheck({ mode: "manual" });
+  }
+);
+
+// The dashboard's only data path. Reading through the Admin SDK here is what
+// lets firestore.rules stay deny-all — the client never touches Firestore.
+exports.getHealthReport = onCall({ enforceAppCheck: true }, async (request) => {
+  assertHealthAccess(request);
+  const db = admin.firestore();
+  const { runId, history } = request.data || {};
+
+  if (history) {
+    const snap = await db
+      .collection(REPORTS)
+      .orderBy("runId", "desc")
+      .limit(Math.min(Number(history) || 30, 120))
+      .get();
+    // Trend only — sending 30 full reports would be megabytes.
+    return {
+      runs: snap.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          runId: doc.id,
+          generated: data.generated,
+          status: data.status,
+          counts: data.counts,
+          costTotal: data.costTotal,
+          findingCount: (data.projects || []).reduce((n, p) => n + p.findings.length, 0),
+        };
+      }),
+    };
+  }
+
+  const doc = runId
+    ? await db.collection(REPORTS).doc(runId).get()
+    : (await db.collection(REPORTS)
+        .orderBy("runId", "desc")
+        .limit(1)
+        .get()).docs[0];
+
+  if (!doc || !doc.exists) throw new HttpsError("not-found", "No report yet.");
+  return doc.data();
+});
+
 // Pure helpers, exported for unit testing only — not part of the deployed
 // function surface (Firebase only deploys the `exports.<name>` onCall/onSchedule
 // entries above).
-exports._internal = { formatTranscript, toGeminiContents, runTool };
+exports._internal = { formatTranscript, toGeminiContents, runTool, assertHealthAccess, buildReport };

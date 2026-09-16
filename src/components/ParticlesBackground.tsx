@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { loadSlim } from "tsparticles-slim";
-import type { Container, Engine } from "tsparticles-engine";
+import type { Engine } from "tsparticles-engine";
 import { Particles } from "react-tsparticles";
 
 const ParticlesBackground = () => {
@@ -8,15 +8,10 @@ const ParticlesBackground = () => {
     await loadSlim(engine);
   }, []);
 
-  const particlesLoaded = useCallback(async (_container: Container | undefined) => {
-    // Optional: You can do something with the container when it's loaded
-  }, []);
-
   return (
     <Particles
       id="tsparticles"
       init={particlesInit}
-      loaded={particlesLoaded}
       className="absolute inset-0"
       options={{
         fpsLimit: 30,

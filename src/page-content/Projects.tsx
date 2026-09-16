@@ -1,12 +1,12 @@
 import { useEffect, useRef } from "react"
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Section, SectionHeading, MutedLink } from "@/components/ui/section"
 import { ProjectCard } from "@/components/ProjectCard"
+import { AnimatedCard } from "@/components/AnimatedCard"
 import { BriefcaseIcon, PhoneIcon } from "@heroicons/react/24/outline"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
+import { useScrollAnimation } from "@/lib/hooks"
 import { projectItems, keyToSlug } from "@/lib/projects-data"
 
 interface ProjectsProps {
@@ -20,9 +20,6 @@ export default function Projects({ lang }: ProjectsProps) {
   const heroRef = useRef<HTMLElement>(null)
   const gridRef = useRef<HTMLElement>(null)
   const ctaRef = useRef<HTMLElement>(null)
-
-  // Refs for card animations
-  const projectCardRefs = Array(projectItems.length).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   const heroAnimation = useScrollAnimation(heroRef)
   const gridAnimation = useScrollAnimation(gridRef)
@@ -52,12 +49,7 @@ export default function Projects({ lang }: ProjectsProps) {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
             {projectItems.map((item, index) => (
-              <motion.div
-                key={item.key}
-                ref={projectCardRefs[index]}
-                {...useMobileCardAnimation(projectCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={item.key} index={index} className="md:transform-none w-full">
                 <ProjectCard
                   title={t(`projects.items.${item.key}.title`)}
                   description={t(`projects.items.${item.key}.description`)}
@@ -71,7 +63,7 @@ export default function Projects({ lang }: ProjectsProps) {
                   caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
                   storeLinks={item.storeLinks}
                 />
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
         </div>

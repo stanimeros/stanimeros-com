@@ -18,7 +18,8 @@ import {
 } from "@heroicons/react/24/outline"
 import { sendEmail } from "@/lib/firebase"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
+import { useScrollAnimation } from "@/lib/hooks"
+import { AnimatedCard } from "@/components/AnimatedCard"
 
 const trustFeatures = [
   { key: "consultation", icon: ClockIcon },
@@ -55,9 +56,6 @@ export default function Contact() {
   const heroRef = useRef<HTMLElement>(null)
   const formRef = useRef<HTMLElement>(null)
   const faqRef = useRef<HTMLElement>(null)
-
-  // Refs for card animations
-  const trustFeatureCardRefs = Array(trustFeatures.length).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   const heroAnimation = useScrollAnimation(heroRef)
   const formAnimation = useScrollAnimation(formRef)
@@ -211,10 +209,9 @@ export default function Contact() {
 
           <div className="grid sm:grid-cols-3 gap-4 max-w-4xl mx-auto mt-16">
             {trustFeatures.map(({ key, icon: Icon }, index) => (
-              <motion.div
+              <AnimatedCard
                 key={key}
-                ref={trustFeatureCardRefs[index]}
-                {...useMobileCardAnimation(trustFeatureCardRefs[index], index)}
+                index={index}
                 className="md:transform-none w-full flex items-start space-x-3 p-4 rounded-lg bg-card/70 border border-border/60"
               >
                 <div className="mt-1 shrink-0">
@@ -224,7 +221,7 @@ export default function Contact() {
                   <h3 className="font-medium">{t(`contact.features.${key}.title`)}</h3>
                   <p className="text-sm text-muted-foreground">{t(`contact.features.${key}.description`)}</p>
                 </div>
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
         </div>

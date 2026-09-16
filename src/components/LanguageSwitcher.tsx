@@ -13,7 +13,9 @@ const LanguageSwitcher = ({ variant = 'default' }: LanguageSwitcherProps) => {
     const newLang = i18n.language === 'en' ? 'el' : 'en'
     try {
       localStorage.setItem('preferredLang', newLang)
-    } catch (e) {}
+    } catch {
+      // localStorage unavailable, proceed anyway
+    }
     const { pathname, search, hash } = window.location
     const basePath = pathname.startsWith('/el') ? pathname.slice(3) || '/' : pathname
     const target = newLang === 'el' ? `/el${basePath === '/' ? '' : basePath}` : basePath

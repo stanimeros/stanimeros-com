@@ -33,7 +33,8 @@ import ProcessSection from "@/components/ProcessSection"
 import Testimonials from "@/components/Testimonials"
 import { ContactChannels } from "@/components/ContactChannels"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
+import { useScrollAnimation } from "@/lib/hooks"
+import { AnimatedCard } from "@/components/AnimatedCard"
 import { projectItems, keyToSlug, type ProjectItem } from "@/lib/projects-data"
 // Facebook/Instagram/LinkedIn/GitHub brand marks have no @heroicons/react
 // equivalent (heroicons is a generic UI icon set, not a brand-icon set), so
@@ -59,15 +60,11 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
   const projectsRef = useRef<HTMLElement>(null)
   const contactRef = useRef<HTMLElement>(null)
   
-  // Refs for card animations
-  const serviceCardRefs = Array(5).fill(null).map(() => useRef<HTMLDivElement>(null))
-  const packageCardRefs = Array(3).fill(null).map(() => useRef<HTMLDivElement>(null))
   // A fixed slice, not a random one: this page is statically prerendered, so
   // Math.random() here would pick different projects at build time (server)
   // vs. hydration time (client) and break hydration every load.
   const featuredProjectItems: ProjectItem[] = projectItems.slice(0, 12)
-  const projectCardRefs = Array(featuredProjectItems.length).fill(null).map(() => useRef<HTMLDivElement>(null))
-  
+
   // Get animation props for each section
   const aboutAnimation = useScrollAnimation(aboutRef)
   useEffect(() => {
@@ -188,12 +185,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                 description: 'services.aiAgent.description'
               }
             ].map((service, index) => (
-              <motion.div
-                key={index}
-                ref={serviceCardRefs[index]}
-                {...useMobileCardAnimation(serviceCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={index} index={index} className="md:transform-none w-full">
                 <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-2 h-full flex flex-col bg-card/70 hover:bg-card/70">
                   <CardHeader className="text-center flex-none">
                     <div className="mx-auto mb-4 text-primary">
@@ -209,7 +201,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                     </CardDescription>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
         </div>
@@ -271,12 +263,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                 ctaIcon: <SparklesIcon className="size-5 mr-2 stroke-[1.5]" />,
               },
             ].map((pkg, index) => (
-              <motion.div
-                key={index}
-                ref={packageCardRefs[index]}
-                {...useMobileCardAnimation(packageCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={index} index={index} className="md:transform-none w-full">
                 <Card className={`relative flex flex-col hover:shadow-lg transition-all duration-300 h-full bg-card/70 hover:bg-card/70 ${pkg.className}`}>
                   <CardHeader className="flex-none">
                     <div className="flex items-center justify-between">
@@ -316,7 +303,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                     </Button>
                   </div>
                 </Card>
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
 
@@ -446,12 +433,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
           />
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 w-full">
             {featuredProjectItems.map((item, index) => (
-              <motion.div
-                key={item.key}
-                ref={projectCardRefs[index]}
-                {...useMobileCardAnimation(projectCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={item.key} index={index} className="md:transform-none w-full">
                 <ProjectCard
                   title={t(`projects.items.${item.key}.title`)}
                   description={t(`projects.items.${item.key}.description`)}
@@ -465,7 +447,7 @@ const HomeSections = ({ lang }: HomeSectionsProps) => {
                   caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
                   storeLinks={item.storeLinks}
                 />
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
           <div className="text-center mt-10">

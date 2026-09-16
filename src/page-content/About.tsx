@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Section, SectionHeading, MutedLink } from "@/components/ui/section"
 import { ProjectCard } from "@/components/ProjectCard"
+import { AnimatedCard } from "@/components/AnimatedCard"
 import ProcessSection from "@/components/ProcessSection"
 import Testimonials from "@/components/Testimonials"
 import {
@@ -17,7 +17,7 @@ import {
   PhoneIcon,
 } from "@heroicons/react/24/outline"
 import { trackEvent } from "@/lib/events"
-import { useScrollAnimation, useMobileCardAnimation } from "@/lib/hooks"
+import { useScrollAnimation } from "@/lib/hooks"
 import GitHubCalendarComponent from "@/components/GitHubCalendar"
 import { projectItems, keyToSlug } from "@/lib/projects-data"
 
@@ -52,10 +52,6 @@ export default function About({ lang }: AboutProps) {
   const githubRef = useRef<HTMLElement>(null)
   const projectsRef = useRef<HTMLElement>(null)
   const ctaRef = useRef<HTMLElement>(null)
-
-  // Refs for card animations
-  const sectionCardRefs = Array(sections.length).fill(null).map(() => useRef<HTMLDivElement>(null))
-  const exampleCardRefs = Array(examples.length).fill(null).map(() => useRef<HTMLDivElement>(null))
 
   const heroAnimation = useScrollAnimation(heroRef)
   const sectionsAnimation = useScrollAnimation(sectionsRef)
@@ -111,12 +107,7 @@ export default function About({ lang }: AboutProps) {
         <div className="container mx-auto px-4">
           <div className="grid md:grid-cols-3 gap-6 w-full">
             {sections.map(({ key, icon: Icon }, index) => (
-              <motion.div
-                key={key}
-                ref={sectionCardRefs[index]}
-                {...useMobileCardAnimation(sectionCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={key} index={index} className="md:transform-none w-full">
                 <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-2 h-full flex flex-col bg-card/70 hover:bg-card/70">
                   <CardHeader className="flex-none">
                     <div className="p-2 rounded-lg bg-primary/10 w-fit mb-2">
@@ -128,7 +119,7 @@ export default function About({ lang }: AboutProps) {
                     <p className="text-muted-foreground leading-relaxed">{t(`aboutPage.${key}.paragraph`)}</p>
                   </CardContent>
                 </Card>
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
         </div>
@@ -157,12 +148,7 @@ export default function About({ lang }: AboutProps) {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
             {examples.map((item, index) => (
-              <motion.div
-                key={item.key}
-                ref={exampleCardRefs[index]}
-                {...useMobileCardAnimation(exampleCardRefs[index], index)}
-                className="md:transform-none w-full"
-              >
+              <AnimatedCard key={item.key} index={index} className="md:transform-none w-full">
                 <ProjectCard
                   title={t(`projects.items.${item.key}.title`)}
                   description={t(`projects.items.${item.key}.description`)}
@@ -175,7 +161,7 @@ export default function About({ lang }: AboutProps) {
                   url={item.url}
                   caseStudyHref={`${prefix}/projects/${keyToSlug(item.key)}`}
                 />
-              </motion.div>
+              </AnimatedCard>
             ))}
           </div>
           <div className="text-center mt-10">

@@ -22,10 +22,13 @@ function escapeHtml(value) {
 
 // Single place that actually sends mail to the site owner — used by both the
 // contact form and the chat summary emails so there's one delivery path to reason about.
-async function sendOwnerEmail({ subject, html }) {
+// `to` defaults to the sending mailbox. The health checker overrides it to
+// reach the iCloud-hosted @stanimeros.com address; From stays the Gmail account
+// either way, because that's the only value SPF will pass for this sender.
+async function sendOwnerEmail({ subject, html, to = null }) {
   await transporter.sendMail({
     from: process.env.EMAIL_USER,
-    to: process.env.EMAIL_USER,
+    to: to || process.env.EMAIL_USER,
     subject,
     html,
   });

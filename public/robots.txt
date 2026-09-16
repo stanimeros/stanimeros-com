@@ -24,6 +24,9 @@ Allow: /
 User-agent: Yandex
 Allow: /
 
+# Internal dashboard — no public content, and the data behind it is gated.
+Disallow: /health
+
 # Allow crawling of static assets
 Allow: /images/
 Allow: /assets/

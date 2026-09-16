@@ -45,14 +45,18 @@ export default function LanguageBanner({ lang }: LanguageBannerProps) {
   const switchLang = () => {
     try {
       localStorage.setItem(PREFERRED_KEY, target)
-    } catch {}
+    } catch {
+      // localStorage unavailable, proceed with navigation anyway
+    }
     window.location.href = target === "el" ? "/el" : "/"
   }
 
   const dismiss = () => {
     try {
       localStorage.setItem(DISMISS_KEY, "true")
-    } catch {}
+    } catch {
+      // localStorage unavailable, proceed anyway
+    }
     setTarget(null)
   }
 
