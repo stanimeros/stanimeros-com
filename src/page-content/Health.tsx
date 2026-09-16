@@ -167,15 +167,17 @@ function Tile({
   tone,
   hint,
   icon: Icon,
+  className,
 }: {
   label: string
   value: string
   tone?: string
   hint?: string
   icon?: typeof Gauge
+  className?: string
 }) {
   return (
-    <Card className="gap-1 px-4 py-3">
+    <Card className={`gap-1 px-4 py-3 ${className || ""}`}>
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
         {Icon && <Icon className="size-3.5" aria-hidden="true" />}
         {label}
@@ -445,6 +447,7 @@ function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
           value={String(unread.length)}
           tone={unread.length ? LEVEL_TEXT.warn : ""}
           icon={AlertTriangle}
+          className="col-span-2 sm:col-span-1"
         />
       </div>
 
@@ -524,6 +527,7 @@ function CostTab({ report, projects }: { report: Report; projects: ProjectResult
             withCost.reduce((sum, p) => sum + p.cost.last7d, 0),
             report.costCurrency
           )}
+          className="col-span-2 sm:col-span-1"
         />
       </div>
 
@@ -587,6 +591,7 @@ export default function Health() {
   const [authReady, setAuthReady] = useState(false)
   const [report, setReport] = useState<Report | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [loadingReport, setLoadingReport] = useState(false)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState("overview")
 
@@ -603,6 +608,7 @@ export default function Health() {
 
   const load = useCallback(async () => {
     setError(null)
+    setLoadingReport(true)
     try {
       const result = await getHealthReport()
       setReport(result.data as Report)
@@ -613,6 +619,8 @@ export default function Health() {
       if (code.includes("permission-denied")) setError("This account isn't allowed to view health data.")
       else if (code.includes("not-found")) setError("No report has been generated yet.")
       else setError((err as Error).message || "Could not load the report.")
+    } finally {
+      setLoadingReport(false)
     }
   }, [])
 
@@ -658,7 +666,7 @@ export default function Health() {
       <div className="health-light flex min-h-svh flex-col items-center justify-center gap-4 bg-background px-4 text-foreground">
         <div className="flex items-center gap-2 text-xl font-semibold">
           <Activity className="size-5" aria-hidden="true" />
-          Firebase health
+          System health
         </div>
         <p className="text-sm text-muted-foreground">Internal dashboard. Sign in to continue.</p>
         <Button onClick={() => signInWithGoogle().catch((e) => setError(e.message))}>
@@ -680,13 +688,16 @@ export default function Health() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-semibold">Firebase health</h1>
+                <h1 className="text-xl font-semibold">System health</h1>
                 {report && <StatusIcon level={report.status} />}
               </div>
               {report && (
-                <p className="text-sm text-muted-foreground">
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
                   {LEVEL_LABEL[report.status]} · {timeAgo(report.generated)} · {report.mode} ·{" "}
                   {Math.round(report.durationMs / 1000)}s · {report.logHours}h error window
+                  {loadingReport && (
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                  )}
                 </p>
               )}
             </div>
@@ -695,15 +706,20 @@ export default function Health() {
             <Button
               variant="outline"
               onClick={runNow}
-              disabled={busy}
+              disabled={busy || loadingReport}
               title="Full sweep. Sends no email and doesn't change what the next scheduled run will alert on."
             >
               <RefreshCw className={busy ? "animate-spin" : ""} aria-hidden="true" />
               {busy ? "Running…" : "Run now"}
             </Button>
-            <Button variant="ghost" onClick={() => signOut()}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => signOut()}
+              title="Sign out"
+              aria-label="Sign out"
+            >
               <LogOut aria-hidden="true" />
-              Sign out
             </Button>
           </div>
         </header>
@@ -715,34 +731,41 @@ export default function Health() {
           </Card>
         )}
 
+        {loadingReport && !report && !error && (
+          <div className="flex flex-col items-center justify-center gap-2 py-20 text-muted-foreground">
+            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
+            <p className="text-sm">Loading report…</p>
+          </div>
+        )}
+
         {report && (
           <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-            <TabsList className="flex w-full bg-muted">
-              <TabsTrigger value="overview" className="flex-1 justify-center">
+            <TabsList className="grid w-full grid-cols-4 bg-muted sm:flex">
+              <TabsTrigger value="overview" className="sm:flex-1">
                 <LayoutDashboard className="size-4" aria-hidden="true" />
-                Overview
+                <span className="hidden sm:inline">Overview</span>
               </TabsTrigger>
-              <TabsTrigger value="projects" className="flex-1 justify-center">
+              <TabsTrigger value="projects" className="sm:flex-1">
                 <FolderKanban className="size-4" aria-hidden="true" />
-                Projects
+                <span className="hidden sm:inline">Projects</span>
                 {report.counts.critical + report.counts.warn > 0 && (
                   <Badge variant="destructive" className="h-4 px-1 text-[10px]">
                     {report.counts.critical + report.counts.warn}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="errors" className="flex-1 justify-center">
+              <TabsTrigger value="errors" className="sm:flex-1">
                 <AlertTriangle className="size-4" aria-hidden="true" />
-                Errors
+                <span className="hidden sm:inline">Errors</span>
                 {errorTotal > 0 && (
                   <Badge variant="secondary" className="h-4 px-1 text-[10px]">
                     {formatValue(errorTotal, null)}
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="cost" className="flex-1 justify-center">
+              <TabsTrigger value="cost" className="sm:flex-1">
                 <CircleDollarSign className="size-4" aria-hidden="true" />
-                Cost
+                <span className="hidden sm:inline">Cost</span>
               </TabsTrigger>
             </TabsList>
 

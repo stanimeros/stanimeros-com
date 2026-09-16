@@ -36,10 +36,26 @@ function rollingWindow() {
   return { start: new Date(end.getTime() - 24 * 60 * 60 * 1000), end };
 }
 
-function timeSeriesUrl(projectId, params) {
+function timeSeriesUrl(projectId, params, pageToken) {
   const qs = new URLSearchParams();
   for (const [key, value] of params) qs.append(key, value);
+  if (pageToken) qs.append("pageToken", pageToken);
   return `${MONITORING}/projects/${encodeURIComponent(projectId)}/timeSeries?${qs.toString()}`;
+}
+
+// timeSeries.list paginates once a project has enough grouped series (many
+// functions, many label combinations); reading only the first page silently
+// drops the rest, undercounting totals and dropping entities from breakdowns.
+async function fetchAllTimeSeries(projectId, params, token) {
+  const series = [];
+  let pageToken;
+  do {
+    const payload = await apiGet(timeSeriesUrl(projectId, params, pageToken), token);
+    if (!payload) return pageToken ? series : null;
+    series.push(...(payload.timeSeries || []));
+    pageToken = payload.nextPageToken;
+  } while (pageToken);
+  return series;
 }
 
 function pointValue(point) {
@@ -69,11 +85,11 @@ async function timeseries(projectId, spec, start, end, token) {
   ];
   for (const field of spec.groupBy || []) params.push(["aggregation.groupByFields", field]);
 
-  const payload = await apiGet(timeSeriesUrl(projectId, params), token);
-  if (!payload) return {};
+  const allSeries = await fetchAllTimeSeries(projectId, params, token);
+  if (!allSeries) return {};
 
   const out = {};
-  for (const series of payload.timeSeries || []) {
+  for (const series of allSeries) {
     const labels = (series.metric && series.metric.labels) || {};
     const keys = Object.keys(labels);
     const label = keys.length ? keys.map((k) => String(labels[k])).join("|") : "";
@@ -103,14 +119,14 @@ async function breakdown(projectId, spec, start, end, token) {
     ["aggregation.groupByFields", spec.statusLabel],
   ];
 
-  const payload = await apiGet(timeSeriesUrl(projectId, params), token);
-  if (!payload) return {};
+  const allSeries = await fetchAllTimeSeries(projectId, params, token);
+  if (!allSeries) return {};
 
   const nameKey = spec.nameLabel.split(".").pop();
   const statusKey = spec.statusLabel.split(".").pop();
   const out = {};
 
-  for (const series of payload.timeSeries || []) {
+  for (const series of allSeries) {
     const resourceLabels = (series.resource && series.resource.labels) || {};
     const metricLabels = (series.metric && series.metric.labels) || {};
     const name = resourceLabels[nameKey] || metricLabels[nameKey];
