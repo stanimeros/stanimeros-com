@@ -47,8 +47,36 @@ const METRICS = [
 // from a metric that only counts executions.
 const FAILURE_LABELS = {
   "functions.calls": (label) => label !== "ok" && label !== "",
-  "run.requests": (label) => label === "4xx" || label === "5xx",
+  // 4xx deliberately excluded: this estate's callables reject unauthenticated
+  // and unauthorized callers by design (see functions/index.js
+  // assertHealthAccess and friends), and that shows up as ordinary 4xx
+  // traffic in this metric -- expected bot/scanner noise, not a real
+  // failure. 5xx is what actually means "the server broke".
+  "run.requests": (label) => label === "5xx",
 };
+
+// Failure-rate bar for FAILURE_LABELS metrics, keyed by metric. Defaults
+// below (5%/25% share, cfg.errorFloor count) apply to anything not listed.
+// functions.calls needs its own, higher bar: unlike run.requests, Cloud
+// Functions' execution_count metric only reports a coarse ok/error status
+// with no 4xx/5xx split, so an expected auth rejection (assertHealthAccess
+// and friends) can't be excluded from it the way it can from run.requests --
+// it just shows up as routine "error" noise, observed running ~13% on
+// stanimeros-dev's own callables on an ordinary day. Until that's split out
+// at the app level (e.g. logging rejections distinctly), a higher floor and
+// share keeps that noise quiet while still catching a real crash spike.
+const FAILURE_THRESHOLDS = {
+  "functions.calls": { errorFloor: 30, share: 0.2, criticalShare: 0.5 },
+};
+
+function failureThresholdsFor(key, cfg) {
+  const override = FAILURE_THRESHOLDS[key] || {};
+  return {
+    errorFloor: override.errorFloor ?? cfg.errorFloor,
+    share: override.share ?? 0.05,
+    criticalShare: override.criticalShare ?? 0.25,
+  };
+}
 
 // Per-entity breakdowns: which function broke, not just "a function did".
 const BREAKDOWNS = [
@@ -77,7 +105,13 @@ const DEFAULTS = {
   freeTierWarn: 0.8,    // warn at 80% of a Spark daily allowance
   baselineDays: 14,
   logHours: 24,
+  saKeyCriticalDays: 365,  // a downloadable SA key older than this is critical, not just a warn
 };
+
+// Project-level roles that turn a leaked service-account key into full
+// project control. Bound to a human, these are expected; bound to a service
+// account, they're usually a leftover from early setup and worth narrowing.
+const BROAD_ROLES = new Set(["roles/owner", "roles/editor"]);
 
 // Per-project threshold overrides, merged over DEFAULTS. Phase 1 of the plan
 // fills this in: a project that is legitimately spiky gets its floor or ratio
@@ -110,9 +144,12 @@ module.exports = {
   BILLING_ACCOUNT,
   METRICS,
   FAILURE_LABELS,
+  FAILURE_THRESHOLDS,
   BREAKDOWNS,
+  BROAD_ROLES,
   DEFAULTS,
   OVERRIDES,
   LIMITS,
   thresholdsFor,
+  failureThresholdsFor,
 };

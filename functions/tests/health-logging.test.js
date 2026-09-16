@@ -81,9 +81,17 @@ test("sourceOf falls back to the raw resource type when it has no short name map
   assert.equal(sourceOf(entry), "some_unmapped_type");
 });
 
-test("ALWAYS_REPORT contains exactly the five quiet-but-important kinds", () => {
+test("ALWAYS_REPORT contains exactly the seven quiet-but-important kinds", () => {
   assert.deepEqual(
     [...ALWAYS_REPORT].sort(),
-    ["billing", "deploy_failure", "missing_index", "quota_exhausted", "rules_denied"].sort()
+    [
+      "api_key_warning",
+      "billing",
+      "deploy_failure",
+      "missing_index",
+      "quota_exhausted",
+      "rules_denied",
+      "service_account_warning",
+    ].sort()
   );
 });

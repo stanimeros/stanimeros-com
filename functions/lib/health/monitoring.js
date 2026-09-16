@@ -21,6 +21,19 @@ function windowFor(days) {
   return { start, end };
 }
 
+// A second window, ending *now* instead of yesterday's midnight. Used only for
+// same-day failure-rate checks (see analyze.js's analyzeLiveFailures) — a
+// partial today always reads low on *volume*, which is exactly why spike/stall
+// stay pinned to yesterday's complete day (see windowFor), but a failure
+// *rate* (failed/total so far) is meaningful on partial data the same way it
+// is on a full one, and catching a bad deploy same-day beats waiting for
+// tomorrow's sweep.
+function todayWindow() {
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  return { start, end: new Date() };
+}
+
 function timeSeriesUrl(projectId, params) {
   const qs = new URLSearchParams();
   for (const [key, value] of params) qs.append(key, value);
@@ -140,4 +153,4 @@ function dropRunShadows(entities) {
   return { entities: kept, shadowedCalls };
 }
 
-module.exports = { timeseries, breakdown, dropRunShadows, windowFor, isoSecond };
+module.exports = { timeseries, breakdown, dropRunShadows, windowFor, todayWindow, isoSecond };

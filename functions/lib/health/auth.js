@@ -65,15 +65,23 @@ function sleep(ms) {
  * (see party-game-stanimeros 503, 2026-09-16) shouldn't cost a project its
  * whole check for the run.
  *
+ * @param {string} url
+ * @param {string} token
+ * @param {{ timeoutMs?: number, method?: string, body?: string }} [options]
  * @returns {Promise<any>} parsed JSON, or null when the service isn't in use here
  */
-async function apiGet(url, token, { timeoutMs = 90000 } = {}) {
+async function apiGet(url, token, { timeoutMs = 90000, method = "GET", body } = {}) {
   let lastErr;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     let res;
     try {
       res = await fetch(url, {
-        headers: { Authorization: `Bearer ${token}` },
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+        },
+        ...(body !== undefined ? { body } : {}),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (err) {

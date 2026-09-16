@@ -18,6 +18,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
 import { watchAuth, signInWithGoogle, signOut, getHealthReport, runHealthCheckNow } from "@/lib/firebase"
 
 type Level = "critical" | "warn" | "ok"
@@ -191,53 +192,54 @@ function ProjectCard({ project }: { project: ProjectResult }) {
 
   return (
     <Card className={`gap-3 px-4 py-4 ${LEVEL_STYLE[project.status]}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start justify-between gap-3 text-left"
-        aria-expanded={open}
-      >
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusIcon level={project.status} />
-            <span className="font-semibold">{project.name}</span>
-            <span className="text-xs text-muted-foreground">{project.project}</span>
-            <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-              {project.plan}
-            </span>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex w-full items-start justify-between gap-3 text-left">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusIcon level={project.status} />
+              <span className="font-semibold">{project.name}</span>
+              <span className="text-xs text-muted-foreground">{project.project}</span>
+              <span
+                className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
+                  project.plan === "Blaze"
+                    ? "border-amber-300 bg-amber-50 text-amber-700"
+                    : "border-border text-muted-foreground"
+                }`}
+              >
+                {project.plan}
+              </span>
+            </div>
+            <div className={`mt-1 text-sm ${LEVEL_TEXT[project.status]}`}>
+              {project.findings.length
+                ? `${project.findings.length} finding${project.findings.length === 1 ? "" : "s"}`
+                : "No findings"}
+              {project.errorCount !== null && project.errorCount > 0
+                ? ` · ${project.errorCount}${project.errorTruncated ? "+" : ""} errors`
+                : ""}
+              {/* null means the log read failed — never render that as zero. */}
+              {project.errorCount === null ? " · errors unread" : ""}
+            </div>
           </div>
-          <div className={`mt-1 text-sm ${LEVEL_TEXT[project.status]}`}>
-            {project.findings.length
-              ? `${project.findings.length} finding${project.findings.length === 1 ? "" : "s"}`
-              : "No findings"}
-            {project.errorCount !== null && project.errorCount > 0
-              ? ` · ${project.errorCount}${project.errorTruncated ? "+" : ""} errors`
-              : ""}
-            {/* null means the log read failed — never render that as zero. */}
-            {project.errorCount === null ? " · errors unread" : ""}
+          <div className="shrink-0 text-right">
+            {project.cost ? (
+              <div className="text-sm">{formatMoney(project.cost.last30d, project.cost.currency)}</div>
+            ) : null}
+            <div className="text-xs text-muted-foreground">{open ? "hide" : "details"}</div>
           </div>
-        </div>
-        <div className="shrink-0 text-right">
-          {project.cost ? (
-            <div className="text-sm">{formatMoney(project.cost.last30d, project.cost.currency)}</div>
-          ) : null}
-          <div className="text-xs text-muted-foreground">{open ? "hide" : "details"}</div>
-        </div>
-      </button>
+        </CollapsibleTrigger>
 
-      {project.findings.length > 0 && (
-        <ul className="space-y-1 text-sm">
-          {project.findings.map((finding) => (
-            <li key={finding.key} className="flex gap-2">
-              <span className={`shrink-0 font-medium ${LEVEL_TEXT[finding.level]}`}>{finding.kind}</span>
-              <span className="text-muted-foreground">{finding.text}</span>
-            </li>
-          ))}
-        </ul>
-      )}
+        {project.findings.length > 0 && (
+          <ul className="mt-3 space-y-1 text-sm">
+            {project.findings.map((finding) => (
+              <li key={finding.key} className="flex gap-2">
+                <span className={`shrink-0 font-medium ${LEVEL_TEXT[finding.level]}`}>{finding.kind}</span>
+                <span className="text-muted-foreground">{finding.text}</span>
+              </li>
+            ))}
+          </ul>
+        )}
 
-      {open && (
-        <div className="space-y-4 border-t border-border pt-3">
+        <CollapsibleContent className="space-y-4 overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down data-[state=open]:mt-4 data-[state=open]:border-t data-[state=open]:border-border data-[state=open]:pt-3">
           {metrics.length > 0 && (
             <div className="space-y-1.5">
               <p className="text-xs text-muted-foreground">
@@ -330,8 +332,8 @@ function ProjectCard({ project }: { project: ProjectResult }) {
               ))}
             </ul>
           )}
-        </div>
-      )}
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   )
 }
@@ -716,12 +718,12 @@ export default function Health() {
 
         {report && (
           <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="overview">
+            <TabsList className="flex w-full bg-muted">
+              <TabsTrigger value="overview" className="flex-1 justify-center">
                 <LayoutDashboard className="size-4" aria-hidden="true" />
                 Overview
               </TabsTrigger>
-              <TabsTrigger value="projects">
+              <TabsTrigger value="projects" className="flex-1 justify-center">
                 <FolderKanban className="size-4" aria-hidden="true" />
                 Projects
                 {report.counts.critical + report.counts.warn > 0 && (
@@ -730,7 +732,7 @@ export default function Health() {
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="errors">
+              <TabsTrigger value="errors" className="flex-1 justify-center">
                 <AlertTriangle className="size-4" aria-hidden="true" />
                 Errors
                 {errorTotal > 0 && (
@@ -739,7 +741,7 @@ export default function Health() {
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="cost">
+              <TabsTrigger value="cost" className="flex-1 justify-center">
                 <CircleDollarSign className="size-4" aria-hidden="true" />
                 Cost
               </TabsTrigger>

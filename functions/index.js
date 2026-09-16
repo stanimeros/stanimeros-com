@@ -273,11 +273,14 @@ const HEALTH_OPTIONS = {
   maxInstances: 1,
 };
 
-// Once a day, not three times: every metric-based finding is scored off
+// Once a day, not three times: most metric-based findings are scored off
 // *yesterday's* complete UTC day (see monitoring.js windowFor) regardless of
-// how often this runs, so extra runs on the same day would just re-score the
-// same numbers. Only the 24h-rolling log findings would benefit from more
-// frequent runs, and that's not worth the extra alert-fatigue risk.
+// how often this runs, so extra scheduled runs on the same day would mostly
+// just re-score the same numbers. The 24h-rolling log findings and the
+// same-day failure-rate check (analyze.js analyzeLiveFailures) do benefit
+// from running more often intraday -- for now that's what "Run now" on the
+// dashboard is for, rather than raising the schedule's frequency and paying
+// for 15 extra Monitoring/Logging sweeps a day estate-wide.
 // 9am Athens gives the UTC day (ends 00:00 UTC = 03:00 Athens) time to settle
 // in Monitoring before the sweep reads it.
 exports.healthCheck = onSchedule(

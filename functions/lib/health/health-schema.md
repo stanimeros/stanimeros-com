@@ -58,10 +58,10 @@ chronologically and is unique per run.
     {
       "key":   "tattoo-healer:spike:firestore.reads",  // stable -- drives email diffing
       "level": "critical",                   // critical | warn
-      "kind":  "spike",                      // spike|stall|failures|quota|errors|
+      "kind":  "spike",                      // spike|stall|failures|live-failures|quota|errors|
                                              // function errors|function silent|function spike|
                                              // missing_index|rules_denied|quota_exhausted|
-                                             // billing|deploy_failure
+                                             // billing|deploy_failure|sa-key|broad-role|api-key
       "text":  "firestore.reads 804 vs baseline 4 (201.0x)"
     }
   ],
@@ -141,3 +141,20 @@ Reports older than 180 days are deleted by the same scheduled function.
   nothing, not a zero.
 - `cost: null` is normal (Spark project, or export not yet producing data).
   The UI must not show "0.00" for it.
+
+## Amendment: same-day failure rate + IAM/key hygiene
+
+Two finding families layered on top of the original schema, both additive and
+neither present in `metrics`/`entities` (they carry their own text):
+
+- `live-failures` — same-day (partial, UTC-midnight-to-now) failure rate on
+  `functions.calls`/`run.requests`, independent of the yesterday-only
+  spike/stall/quota checks. Catches a bad deploy the same day rather than the
+  next sweep; volume checks stay yesterday-only since a partial day always
+  reads low on volume.
+- `sa-key` / `broad-role` / `api-key` — estate hygiene, not usage: a
+  downloadable (user-managed) service-account key, a service account bound to
+  `roles/owner`/`roles/editor`, or an API key with no restrictions. Degrades
+  to no findings (not "not checked") on a project whose IAM/API-keys read
+  grant hasn't rolled out yet -- see `functions/lib/health/iam.js` and
+  `scripts/health-iam.sh`.

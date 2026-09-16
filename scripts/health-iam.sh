@@ -28,9 +28,21 @@ SA_ID=${SA_ID:-health-checker}
 SA="${SA_ID}@${HOST}.iam.gserviceaccount.com"
 DRY_RUN=${DRY_RUN:-1}
 
-# Read-only, both of them. Neither grants access to Firestore documents,
-# Storage objects, or any project configuration.
-ESTATE_ROLES=(roles/monitoring.viewer roles/logging.viewer)
+# Read-only, all four. None grants access to Firestore documents, Storage
+# objects, or any project configuration.
+#
+# The IAM/API-keys pair backs functions/lib/health/iam.js (sa-key/broad-role/
+# api-key findings) and is read-only over *metadata* -- it can see that a key
+# exists and whether it's restricted, never a key's secret material. Verify
+# the exact permission set with `gcloud iam roles describe <role>` before
+# applying broadly; these were picked for being narrowly-scoped predefined
+# roles, not hand-verified against every project in the estate.
+ESTATE_ROLES=(
+  roles/monitoring.viewer
+  roles/logging.viewer
+  roles/iam.securityReviewer
+  roles/serviceusage.apiKeysViewer
+)
 
 # Only in the host project: write the reports, and run the billing queries.
 HOST_ROLES=(roles/datastore.user roles/bigquery.jobUser)

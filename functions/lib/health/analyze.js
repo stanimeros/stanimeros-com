@@ -4,7 +4,7 @@
 // Output is camelCase, matching docs/health-schema.md — the engine's internal
 // snake_case is converted once, here, at the boundary.
 
-const { FAILURE_LABELS, LIMITS } = require("./config");
+const { FAILURE_LABELS, LIMITS, failureThresholdsFor } = require("./config");
 const { dropRunShadows } = require("./monitoring");
 const { ALWAYS_REPORT } = require("./logging");
 
@@ -104,10 +104,11 @@ function analyzeMetric(projectId, spec, data, plan, cfg, findings) {
     }
     if (failedLatest) {
       const share = latest ? failedLatest / latest : 1;
-      if (failedLatest >= cfg.errorFloor && share >= 0.05) {
+      const t = failureThresholdsFor(spec.key, cfg);
+      if (failedLatest >= t.errorFloor && share >= t.share) {
         findings.push({
           key: findingKey(projectId, "failures", spec.key),
-          level: share >= 0.25 ? "critical" : "warn",
+          level: share >= t.criticalShare ? "critical" : "warn",
           kind: "failures",
           text: `${spec.key} failure rate ${Math.round(share * 100)}% (${formatValue(failedLatest)} of ${formatValue(latest)})`,
         });
@@ -191,6 +192,88 @@ function analyzeEntities(projectId, breakdowns, cfg, findings) {
   return { entities: kept, shadowedCalls };
 }
 
+// --- same-day failure-rate findings -----------------------------------------
+
+// Volume checks (spike/stall/quota) stay pinned to yesterday's complete UTC
+// day -- see monitoring.js todayWindow. A partial today always reads low on
+// *volume*, which would make those false-fire, but a failure *rate*
+// (failed/total so far today) is meaningful on partial data the same way it
+// is on a full day, and catching a bad deploy same-day beats waiting for
+// tomorrow's sweep.
+function analyzeLiveFailures(projectId, liveMetricData, cfg, findings) {
+  for (const [key, data] of Object.entries(liveMetricData || {})) {
+    const isFailure = FAILURE_LABELS[key];
+    if (!isFailure || !data) continue;
+
+    let total = 0;
+    let failed = 0;
+    for (const [label, bucket] of Object.entries(data)) {
+      const sum = Object.values(bucket).reduce((a, b) => a + b, 0);
+      total += sum;
+      if (isFailure(label)) failed += sum;
+    }
+    // Too little traffic so far today for a rate to mean anything -- the
+    // same floor that keeps a single failed call from reading as 100%.
+    if (!failed || total < cfg.spikeFloor) continue;
+
+    const share = failed / total;
+    const t = failureThresholdsFor(key, cfg);
+    if (failed >= t.errorFloor && share >= t.share) {
+      findings.push({
+        key: findingKey(projectId, "live-failures", key),
+        level: share >= t.criticalShare ? "critical" : "warn",
+        kind: "live-failures",
+        text: `${key} failing today: ${Math.round(share * 100)}% (${formatValue(failed)} of ${formatValue(total)}) so far`,
+      });
+    }
+  }
+}
+
+// --- IAM / key hygiene findings ---------------------------------------------
+
+function daysSince(iso) {
+  if (!iso) return null;
+  return (Date.now() - new Date(iso).getTime()) / 86400000;
+}
+
+function analyzeIam(projectId, iam, cfg, findings) {
+  if (!iam) return;
+
+  for (const sa of iam.serviceAccounts || []) {
+    for (const key of sa.userManagedKeys || []) {
+      const age = daysSince(key.validAfterTime);
+      const ageText = age === null ? "" : ` (${Math.round(age)}d old)`;
+      findings.push({
+        key: findingKey(projectId, "sa-key", `${sa.email}:${key.name}`),
+        level: age !== null && age >= cfg.saKeyCriticalDays ? "critical" : "warn",
+        kind: "sa-key",
+        text: `${sa.email} has a downloadable key${ageText} — rotate to keyless auth (ADC/workload identity) if possible`,
+      });
+    }
+  }
+
+  for (const binding of iam.broadBindings || []) {
+    const text = binding.isDefaultAgent
+      ? `${binding.email} — GCP's default account for this project — still holds ${binding.role}; narrowing it is optional but a well-known best practice`
+      : `${binding.email} holds ${binding.role} on the project — this looks like a custom account with full project access, worth reviewing`;
+    findings.push({
+      key: findingKey(projectId, "broad-role", `${binding.email}:${binding.role}`),
+      level: binding.isDefaultAgent ? "warn" : "critical",
+      kind: "broad-role",
+      text,
+    });
+  }
+
+  for (const apiKey of iam.unrestrictedKeys || []) {
+    findings.push({
+      key: findingKey(projectId, "api-key", apiKey.name),
+      level: "warn",
+      kind: "api-key",
+      text: `API key "${apiKey.displayName || apiKey.name}" has no restrictions — anyone who gets it can use it from anywhere`,
+    });
+  }
+}
+
 // --- log findings ---------------------------------------------------------
 
 function analyzeLog(projectId, log, logHours, cfg, findings) {
@@ -229,7 +312,18 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
  * Assemble one ProjectResult from already-fetched data. Pure: no I/O, so the
  * thresholds can be unit-tested without touching Google.
  */
-function analyzeProject({ project, metricSpecs, metricData, breakdowns, log, cost, cfg, billingAccount }) {
+function analyzeProject({
+  project,
+  metricSpecs,
+  metricData,
+  breakdowns,
+  log,
+  cost,
+  cfg,
+  billingAccount,
+  liveMetricData,
+  iam,
+}) {
   const findings = [];
   const metrics = {};
 
@@ -262,6 +356,8 @@ function analyzeProject({ project, metricSpecs, metricData, breakdowns, log, cos
   }
 
   analyzeLog(project.id, log, cfg.logHours, cfg, findings);
+  analyzeLiveFailures(project.id, liveMetricData, cfg, findings);
+  analyzeIam(project.id, iam, cfg, findings);
 
   // Attach the log's per-source error count to the entity it belongs to.
   for (const entity of entities) {
@@ -294,4 +390,12 @@ function analyzeProject({ project, metricSpecs, metricData, breakdowns, log, cos
   };
 }
 
-module.exports = { analyzeProject, median, formatValue, findingKey, worstLevel };
+module.exports = {
+  analyzeProject,
+  analyzeLiveFailures,
+  analyzeIam,
+  median,
+  formatValue,
+  findingKey,
+  worstLevel,
+};

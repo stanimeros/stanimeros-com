@@ -7,13 +7,19 @@
 
 const admin = require("firebase-admin");
 
-const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, LIMITS, thresholdsFor } = require("./config");
+const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, FAILURE_LABELS, LIMITS, thresholdsFor } = require("./config");
 const { getAccessToken } = require("./auth");
-const { timeseries, breakdown, windowFor } = require("./monitoring");
+const { timeseries, breakdown, windowFor, todayWindow } = require("./monitoring");
 const { readErrors } = require("./logging");
 const { fetchCosts, fetchBillingTotal } = require("./billing");
+const { collectIam } = require("./iam");
 const { analyzeProject, worstLevel } = require("./analyze");
 const { notifyIfNew, newKeys } = require("./notify");
+
+// The only metrics a same-day failure-rate check needs -- see
+// analyze.js's analyzeLiveFailures. Fetching just these two, not all of
+// METRICS, keeps the extra same-day query cheap.
+const LIVE_METRICS = METRICS.filter((spec) => FAILURE_LABELS[spec.key]);
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -73,7 +79,27 @@ async function collect(project, token, cfg) {
   // a project whose logs can't be read must not look like one with no errors.
   const log = await readErrors(project.id, cfg.logHours, token);
 
-  return { metricData, breakdowns, log };
+  // Both of these are additive, non-core checks (same-day failure rate; IAM
+  // hygiene) layered on top of the metrics/log checks above, which already
+  // work on every project's existing monitoring.viewer/logging.viewer grant.
+  // Neither should be able to take the rest of the project's sweep down —
+  // the live window degrades quietly to {} on failure, and collectIam
+  // degrades internally per-check (see iam.js) since its grant rolls out
+  // separately, project by project.
+  let liveMetricData = {};
+  try {
+    const { start: liveStart, end: liveEnd } = todayWindow();
+    const series = await Promise.all(
+      LIVE_METRICS.map((spec) => timeseries(project.id, spec, liveStart, liveEnd, token))
+    );
+    LIVE_METRICS.forEach((spec, i) => { liveMetricData[spec.key] = series[i]; });
+  } catch (err) {
+    console.log(`live metrics unavailable for ${project.id} -- ${String(err.message || err).slice(0, 200)}`);
+  }
+
+  const iam = await collectIam(project.id, token);
+
+  return { metricData, breakdowns, log, liveMetricData, iam };
 }
 
 async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
@@ -91,7 +117,7 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
   const results = await mapWithLimit(projects, CONCURRENCY, async (project) => {
     const projectCfg = thresholdsFor(project.id);
     try {
-      const { metricData, breakdowns, log } = await collect(project, token, projectCfg);
+      const { metricData, breakdowns, log, liveMetricData, iam } = await collect(project, token, projectCfg);
       return analyzeProject({
         project,
         metricSpecs: METRICS,
@@ -101,6 +127,8 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
         cost: (costs && costs[project.id]) || null,
         cfg: projectCfg,
         billingAccount: BILLING_ACCOUNT,
+        liveMetricData,
+        iam,
       });
     } catch (err) {
       projectErrors.push({

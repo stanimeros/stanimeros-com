@@ -24,6 +24,8 @@ function baseArgs(overrides) {
     cost: null,
     cfg: cfg(),
     billingAccount: "BILLING-1",
+    liveMetricData: {},
+    iam: null,
     ...overrides,
   };
 }
@@ -233,6 +235,137 @@ test("a project with any warn finding gets status warn", () => {
   const data = seriesWithLatest(100, 350); // 3.5x -> warn spike
   const result = analyzeProject(baseArgs({ metricSpecs: [spec], metricData: { "firestore.reads": data } }));
   assert.equal(result.status, "warn");
+});
+
+// --- live-failures (same-day) ----------------------------------------------
+
+function liveData(labelBuckets) {
+  // labelBuckets: { label: total } -- collapsed into one same-day bucket.
+  return Object.fromEntries(Object.entries(labelBuckets).map(([label, total]) => [label, { "2026-09-16": total }]));
+}
+
+test("analyzeLiveFailures ignores a metric with no configured failure label", () => {
+  const result = analyzeProject(
+    baseArgs({ liveMetricData: { "storage.total": liveData({ "": 1000 }) } })
+  );
+  assert.equal(result.findings.some((f) => f.kind === "live-failures"), false);
+});
+
+test("analyzeLiveFailures stays quiet on a tiny partial-day total even at 100% failure", () => {
+  // total (5) is under spikeFloor (100) -- too little of today to mean anything.
+  const result = analyzeProject(
+    baseArgs({ liveMetricData: { "functions.calls": liveData({ error: 5 }) } })
+  );
+  assert.equal(result.findings.some((f) => f.kind === "live-failures"), false);
+});
+
+test("analyzeLiveFailures stays quiet on functions.calls below its raised 20% share -- routine auth-rejection noise, not a crash", () => {
+  // 13%, matching the routine ~13% auth-rejection rate observed on
+  // stanimeros-dev's own callables -- must not fire.
+  const result = analyzeProject(
+    baseArgs({ liveMetricData: { "functions.calls": liveData({ ok: 131, error: 19 }) } }) // 150 total, ~13%
+  );
+  assert.equal(result.findings.some((f) => f.kind === "live-failures"), false);
+});
+
+test("analyzeLiveFailures fires a warn on functions.calls at its raised >= 20% share", () => {
+  const result = analyzeProject(
+    baseArgs({ liveMetricData: { "functions.calls": liveData({ ok: 160, error: 40 }) } }) // 200 total, 20%
+  );
+  const finding = result.findings.find((f) => f.kind === "live-failures");
+  assert.ok(finding, "expected a live-failures finding");
+  assert.equal(finding.level, "warn");
+  assert.equal(finding.key, "proj:live-failures:functions.calls");
+});
+
+test("analyzeLiveFailures escalates functions.calls to critical at its raised >= 50% share", () => {
+  const result = analyzeProject(
+    baseArgs({ liveMetricData: { "functions.calls": liveData({ ok: 100, error: 100 }) } }) // 200 total, 50%
+  );
+  const finding = result.findings.find((f) => f.kind === "live-failures");
+  assert.ok(finding);
+  assert.equal(finding.level, "critical");
+});
+
+test("analyzeLiveFailures uses the default 5%/25% bar for a metric with no override (run.requests)", () => {
+  const warnResult = analyzeProject(
+    baseArgs({ liveMetricData: { "run.requests": liveData({ "2xx": 190, "5xx": 10 }) } }) // 200 total, 5%
+  );
+  const warnFinding = warnResult.findings.find((f) => f.kind === "live-failures");
+  assert.ok(warnFinding, "expected a live-failures finding at the default 5% bar");
+  assert.equal(warnFinding.level, "warn");
+
+  const criticalResult = analyzeProject(
+    baseArgs({ liveMetricData: { "run.requests": liveData({ "2xx": 150, "5xx": 50 }) } }) // 200 total, 25%
+  );
+  assert.equal(criticalResult.findings.find((f) => f.kind === "live-failures").level, "critical");
+});
+
+// --- IAM / key hygiene -------------------------------------------------------
+
+test("analyzeIam is a no-op when iam is null (e.g. the grant hasn't rolled out to this project yet)", () => {
+  const result = analyzeProject(baseArgs({ iam: null }));
+  assert.equal(result.findings.length, 0);
+});
+
+test("analyzeIam flags a user-managed service-account key, warn under the age threshold", () => {
+  const iam = {
+    serviceAccounts: [
+      { email: "sa@proj.iam.gserviceaccount.com", userManagedKeys: [{ name: "k1", validAfterTime: new Date().toISOString() }] },
+    ],
+    broadBindings: [],
+    unrestrictedKeys: [],
+  };
+  const result = analyzeProject(baseArgs({ iam }));
+  const finding = result.findings.find((f) => f.kind === "sa-key");
+  assert.ok(finding, "expected a sa-key finding");
+  assert.equal(finding.level, "warn");
+  assert.equal(finding.key, "proj:sa-key:sa@proj.iam.gserviceaccount.com:k1");
+});
+
+test("analyzeIam escalates a service-account key to critical once it's older than saKeyCriticalDays", () => {
+  const old = new Date(Date.now() - 400 * 86400000).toISOString(); // > default 365d
+  const iam = {
+    serviceAccounts: [{ email: "sa@proj.iam.gserviceaccount.com", userManagedKeys: [{ name: "k1", validAfterTime: old }] }],
+    broadBindings: [],
+    unrestrictedKeys: [],
+  };
+  const result = analyzeProject(baseArgs({ iam }));
+  const finding = result.findings.find((f) => f.kind === "sa-key");
+  assert.equal(finding.level, "critical");
+});
+
+test("analyzeIam flags a custom service account bound to roles/owner or roles/editor as critical", () => {
+  const iam = {
+    serviceAccounts: [],
+    broadBindings: [{ role: "roles/editor", email: "sa@proj.iam.gserviceaccount.com", isDefaultAgent: false }],
+    unrestrictedKeys: [],
+  };
+  const result = analyzeProject(baseArgs({ iam }));
+  const finding = result.findings.find((f) => f.kind === "broad-role");
+  assert.ok(finding, "expected a broad-role finding");
+  assert.equal(finding.key, "proj:broad-role:sa@proj.iam.gserviceaccount.com:roles/editor");
+  assert.equal(finding.level, "critical");
+});
+
+test("analyzeIam flags GCP's own default agent holding a broad role as only a warn", () => {
+  const iam = {
+    serviceAccounts: [],
+    broadBindings: [{ role: "roles/editor", email: "proj@appspot.gserviceaccount.com", isDefaultAgent: true }],
+    unrestrictedKeys: [],
+  };
+  const result = analyzeProject(baseArgs({ iam }));
+  const finding = result.findings.find((f) => f.kind === "broad-role");
+  assert.equal(finding.level, "warn");
+  assert.match(finding.text, /default account/);
+});
+
+test("analyzeIam flags an unrestricted API key", () => {
+  const iam = { serviceAccounts: [], broadBindings: [], unrestrictedKeys: [{ name: "abc", displayName: "Maps key" }] };
+  const result = analyzeProject(baseArgs({ iam }));
+  const finding = result.findings.find((f) => f.kind === "api-key");
+  assert.ok(finding, "expected an api-key finding");
+  assert.match(finding.text, /Maps key/);
 });
 
 test("a project with any critical finding gets status critical, even alongside warns", () => {
