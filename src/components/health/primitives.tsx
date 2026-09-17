@@ -203,15 +203,19 @@ export function FindingsTable({
             one that should ever eat space, everything else is a fixed
             width sized to its own content. */}
         <colgroup>
-          <col className="w-24 sm:w-32" />
-          <col className="w-28 sm:w-36" />
+          {/* Kind folds into the Project cell on mobile instead of getting
+              its own column -- at phone width, four fixed columns left
+              Message a sliver too narrow to read; dropping one column there
+              is worth more than keeping all four legible nowhere. */}
+          <col className="w-28 sm:w-32" />
+          <col className="hidden sm:table-column sm:w-36" />
           <col />
-          <col className="w-12" />
+          <col className="w-10 sm:w-12" />
         </colgroup>
         <thead className="text-xs text-muted-foreground">
           <tr className="text-left">
             <th className="py-1 pr-2 font-normal">Project</th>
-            <th className="py-1 pr-2 font-normal">Kind</th>
+            <th className="hidden py-1 pr-2 font-normal sm:table-cell">Kind</th>
             <th className="py-1 pr-2 font-normal">Message</th>
             <th className="py-1 pr-2 font-normal">Count</th>
           </tr>
@@ -223,7 +227,7 @@ export function FindingsTable({
             return (
               <Fragment key={finding.key}>
                 <tr
-                  className="cursor-pointer border-t border-border/60 align-top hover:bg-muted/40"
+                  className="cursor-pointer border-t border-border/60 align-middle hover:bg-muted/40"
                   role="button"
                   aria-expanded={expanded}
                   tabIndex={0}
@@ -236,16 +240,23 @@ export function FindingsTable({
                   }}
                 >
                   <td className="py-1.5 pr-2">
-                    <span className="flex items-center gap-1">
-                      <ExpandArrow open={expanded} className="size-3" />
+                    <span className="flex min-w-0 items-center gap-1">
+                      <ExpandArrow open={expanded} className="size-3 shrink-0" />
                       {finding.projectName && (
-                        <Badge variant="outline" className="h-4 truncate px-1 text-[10px]">
+                        <Badge variant="outline" className="h-4 shrink-0 truncate px-1 text-[10px]">
                           {finding.projectName}
                         </Badge>
                       )}
+                      {/* Kind's own column is hidden below `sm` (see
+                          colgroup) -- shown here instead, on the same line,
+                          so the row still names it on a phone without
+                          growing taller than the other cells. */}
+                      <span className={`truncate font-mono text-[10px] font-medium sm:hidden ${LEVEL_TEXT[finding.level]}`}>
+                        {finding.kind}
+                      </span>
                     </span>
                   </td>
-                  <td className="py-1.5 pr-2">
+                  <td className="hidden py-1.5 pr-2 sm:table-cell">
                     <span className={`truncate font-mono font-medium ${LEVEL_TEXT[finding.level]}`}>
                       {finding.kind}
                     </span>

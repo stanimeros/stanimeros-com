@@ -20,7 +20,7 @@
  * axis strokes are hairline and solid, the sole exception being the dashed
  * baseline rule in `Series`, where dashing means "reference value".
  */
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { exactTime } from "./format"
 import { HEALTH_STATUS_VAR, LEVEL_LABEL } from "./levels"
 import type { Level } from "./types"
@@ -86,25 +86,59 @@ function bandBackground(run: StatusBandRun): string {
  * run's own severity mix (see `bandBackground`). Cells stretch (`flex-1`)
  * to fill the row whatever the run count is — height, not a width cap, is
  * what keeps each one reading as a thin column rather than a tile. Padded
- * on the left with neutral, non-interactive placeholders up to `minBars`,
- * so the band doesn't visibly widen bar-by-bar over a project's first
- * few runs — only real history ever shrinks it below that floor.
+ * on the left with neutral, non-interactive placeholders up to the current
+ * bar cap (see `useBarCap`), so the band doesn't visibly widen bar-by-bar
+ * over a project's first few runs — only real history ever shrinks it
+ * below that floor.
  */
+// How many bars actually fit a row before they get too thin to read as
+// individual cells, at a few width bands. Picked by eye, not measured off
+// the container -- the row is edge-to-edge in its card either way, and a
+// fixed table beats a ResizeObserver for something this low-stakes.
+const BAR_CAPS: { minWidth: number; cap: number }[] = [
+  { minWidth: 1024, cap: 90 },
+  { minWidth: 640, cap: 60 },
+  { minWidth: 400, cap: 40 },
+  { minWidth: 0, cap: 26 },
+]
+
+function capForWidth(width: number): number {
+  return BAR_CAPS.find((b) => width >= b.minWidth)?.cap ?? 26
+}
+
+/** Caps the bar count to whatever the viewport can actually hold, so the
+ *  band never needs a scrollbar or a page-widening min-width -- it just
+ *  shows a shorter slice of history on a narrow screen. Starts from the
+ *  narrowest cap (correct on first paint for the common mobile case) and
+ *  widens once mounted, since only the client knows the real width. */
+function useBarCap(): number {
+  const [cap, setCap] = useState(26)
+  useEffect(() => {
+    const update = () => setCap(capForWidth(window.innerWidth))
+    update()
+    window.addEventListener("resize", update)
+    return () => window.removeEventListener("resize", update)
+  }, [])
+  return cap
+}
+
 export function StatusBand({
   runs,
   activeRunId,
   onSelectRun,
   className,
-  minBars = 90,
 }: {
   runs: StatusBandRun[]
   activeRunId?: string
   onSelectRun?: (runId: string) => void
   className?: string
-  minBars?: number
 }) {
+  const cap = useBarCap()
   if (runs.length === 0) return null
-  const placeholders = Math.max(0, minBars - runs.length)
+  // Newest runs matter more than old ones, so a narrow screen drops the
+  // oldest bars first rather than shrinking every bar to fit them all.
+  const visible = runs.length > cap ? runs.slice(runs.length - cap) : runs
+  const placeholders = Math.max(0, cap - visible.length)
   return (
     <div
       role="group"
@@ -115,11 +149,11 @@ export function StatusBand({
         <span
           key={`empty-${i}`}
           aria-hidden="true"
-          className="min-w-[2px] flex-1 rounded-[1px]"
+          className="min-w-px flex-1 rounded-[1px]"
           style={{ background: "var(--hc-track)" }}
         />
       ))}
-      {runs.map((run) => {
+      {visible.map((run) => {
         const exact = exactTime(run.generated)
         const countsText = run.counts
           // The page's words, not the internal level names (warn/ok).
@@ -127,7 +161,7 @@ export function StatusBand({
           : ""
         const label = `${LEVEL_LABEL[run.status]} · ${exact}${countsText}`
         return (
-          <span key={run.runId} className="group/hcband relative min-w-[2px] flex-1">
+          <span key={run.runId} className="group/hcband relative min-w-px flex-1">
             <button
               type="button"
               onClick={onSelectRun ? () => onSelectRun(run.runId) : undefined}
