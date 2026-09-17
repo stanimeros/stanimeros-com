@@ -6,8 +6,8 @@
 import { AlertCircle, CheckCircle2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import type { Level, LifecycleFinding, ProjectResult, Report } from "./types"
-import { LEVEL_CHIP_BG, LEVEL_STYLE, LEVEL_TEXT } from "./levels"
-import { duration, formatValue, timeAgo } from "./format"
+import { LEVEL_STYLE, LEVEL_TEXT } from "./levels"
+import { formatValue } from "./format"
 import { CollapsedSection, StatusIcon } from "./primitives"
 
 /** One project, reduced to its severity counts — the grid Overview is built
@@ -32,10 +32,10 @@ function ProjectOverviewCard({
   // an analyzed subset of what's wrong; this is the real number of errors
   // that happened. Warnings/low stay finding counts (there's no raw-log
   // equivalent — those aren't "logged" the way errors are).
-  const cells: { label: string; value: number; tone: string; bg: string; tab: string }[] = [
-    { label: "errors", value: project.errorCount ?? 0, tone: LEVEL_TEXT.critical, bg: LEVEL_CHIP_BG.critical, tab: "errors" },
-    { label: "warnings", value: counts.warn, tone: LEVEL_TEXT.warn, bg: LEVEL_CHIP_BG.warn, tab: "warnings" },
-    { label: "low", value: counts.low, tone: LEVEL_TEXT.low, bg: LEVEL_CHIP_BG.low, tab: "low" },
+  const cells: { label: string; value: number; tone: string; tab: string }[] = [
+    { label: "errors", value: project.errorCount ?? 0, tone: LEVEL_TEXT.critical, tab: "errors" },
+    { label: "warnings", value: counts.warn, tone: LEVEL_TEXT.warn, tab: "warnings" },
+    { label: "low", value: counts.low, tone: LEVEL_TEXT.low, tab: "low" },
   ]
   return (
     <div
@@ -57,7 +57,7 @@ function ProjectOverviewCard({
             disabled={!cell.value}
             onClick={() => onSelect(project, cell.tab)}
             className={`flex flex-col items-center gap-0.5 rounded-lg py-1.5 ${
-              cell.value ? `${cell.bg} cursor-pointer hover:brightness-95 dark:hover:brightness-125` : "cursor-default"
+              cell.value ? "cursor-pointer hover:bg-muted/50" : "cursor-default"
             }`}
           >
             <span className={`text-lg font-semibold tabular-nums ${cell.value ? cell.tone : "text-muted-foreground"}`}>
@@ -112,7 +112,6 @@ export function StatStrip({
 export function OverviewTab({
   report,
   projects,
-  resolved,
   lifecycle,
   findingCounts,
   errorTotal,
@@ -120,27 +119,11 @@ export function OverviewTab({
 }: {
   report: Report
   projects: ProjectResult[]
-  resolved: LifecycleFinding[]
   lifecycle: Map<string, LifecycleFinding>
   findingCounts: Record<Exclude<Level, "ok">, number>
   errorTotal: number
   onSelectProject: (project: ProjectResult, tab: string) => void
 }) {
-  // Mean time a finding stayed open, so the resolved row says something
-  // ("cleared in about 4h") instead of only counting.
-  const avgOpen = resolved.length
-    ? duration(
-        new Date(
-          Date.now() -
-            resolved.reduce(
-              (sum, f) => sum + (new Date(f.resolvedAt!).getTime() - new Date(f.firstSeen).getTime()),
-              0
-            ) /
-              resolved.length
-        ).toISOString()
-      )
-    : null
-
   return (
     <div className="space-y-3">
       <StatStrip report={report} findingCounts={findingCounts} errorTotal={errorTotal} />
@@ -158,39 +141,6 @@ export function OverviewTab({
             <ProjectOverviewCard key={project.project} project={project} lifecycle={lifecycle} onSelect={onSelectProject} />
           ))}
         </div>
-      )}
-
-      {resolved.length > 0 && (
-        <CollapsedSection
-          label={`${resolved.length} resolved in the last 7 days${avgOpen ? ` · avg open ${avgOpen}` : ""}`}
-          icon={CheckCircle2}
-          tone={LEVEL_TEXT.ok}
-        >
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-card text-muted-foreground">
-                <tr className="text-left">
-                  <th className="py-1 pr-2 font-normal">Finding</th>
-                  <th className="w-24 py-1 pr-2 text-right font-normal">Cleared</th>
-                  <th className="w-24 py-1 text-right font-normal">Open for</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resolved.map((finding) => (
-                  <tr key={finding.key} className="border-t border-border/60">
-                    <td className="py-1 pr-2 font-mono text-muted-foreground">{finding.key}</td>
-                    <td className="py-1 pr-2 text-right whitespace-nowrap text-muted-foreground">
-                      {timeAgo(finding.resolvedAt!)}
-                    </td>
-                    <td className="py-1 text-right whitespace-nowrap text-muted-foreground">
-                      {duration(finding.firstSeen, finding.resolvedAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CollapsedSection>
       )}
 
       {report.projectErrors.length > 0 && (

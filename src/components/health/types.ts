@@ -4,7 +4,11 @@
 
 export type Level = "critical" | "warn" | "low" | "ok"
 
-/** One `health_findings/{key}` document — the durable half of a finding. */
+/** One `health_findings/{key}` document — the durable half of a finding.
+ *  Ack is the only lifecycle control point: a finding is `open` or `acked`,
+ *  nothing else. There's no "resolved" -- a finding that stops appearing in
+ *  reports just isn't in `project.findings` any more; this document doesn't
+ *  track that transition at all. */
 export interface LifecycleFinding {
   key: string
   project: string
@@ -13,10 +17,8 @@ export interface LifecycleFinding {
   text: string
   firstSeen: string
   lastSeen: string
-  state: "open" | "resolved" | "unknown" | "acked"
-  resolvedAt: string | null
+  state: "open" | "acked"
   runsSeen: number
-  reopenCount: number
   ackedUntil: string | null
 }
 

@@ -168,7 +168,6 @@ export function ProjectRow({
   const lead = leadFinding(project, lifecycle)
   const leadLife = lead ? lifecycle?.get(lead.finding.key) : undefined
   const anyNew = active.some((f) => isNew?.(f.key))
-  const flapCount = Math.max(0, ...active.map((f) => lifecycle?.get(f.key)?.reopenCount ?? 0), 0)
   const callsMetric = Object.entries(project.metrics).find(
     ([key]) => /call/i.test(key) && !key.endsWith(".failed")
   )
@@ -201,9 +200,6 @@ export function ProjectRow({
               <Badge variant="destructive" className="h-4 shrink-0 px-1 text-[10px]">
                 NEW
               </Badge>
-            )}
-            {flapCount > 0 && (
-              <span className={`font-mono text-[10px] ${LEVEL_TEXT.warn}`}>flapping ×{flapCount}</span>
             )}
           </span>
           <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">

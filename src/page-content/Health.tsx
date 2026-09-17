@@ -260,15 +260,6 @@ export default function Health() {
   // Reverse once, here, rather than in each chart.
   const chronological = useMemo(() => [...history].reverse(), [history])
 
-  /** Findings that cleared recently — the answer to "did my fix land", and
-   *  the one thing a run snapshot can never show. */
-  const resolved = useMemo(() => {
-    const cutoff = Date.now() - 7 * 86400000
-    return findings
-      .filter((f) => f.state === "resolved" && f.resolvedAt && new Date(f.resolvedAt).getTime() > cutoff)
-      .sort((a, b) => (b.resolvedAt || "").localeCompare(a.resolvedAt || ""))
-  }, [findings])
-
   /** New *since you last looked*, not since the previous run — being away for
    *  a day must not roll the window past (plan.md §1.4). Falls back to the
    *  run's own diff when there is no marker yet. */
@@ -284,11 +275,8 @@ export default function Health() {
   const sinceLast = useMemo(() => {
     if (!seen?.lastViewedAt) return null
     const newCount = findings.filter((f) => f.firstSeen > seen.lastViewedAt!).length
-    const clearedCount = findings.filter(
-      (f) => f.state === "resolved" && f.resolvedAt && f.resolvedAt > seen.lastViewedAt!
-    ).length
     const stillOpen = findings.filter((f) => f.state === "open" || f.state === "acked").length
-    return { newCount, clearedCount, stillOpen, at: seen.lastViewedAt }
+    return { newCount, stillOpen, at: seen.lastViewedAt }
   }, [findings, seen])
 
   const onAck = useCallback(
@@ -444,16 +432,12 @@ export default function Health() {
           </div>
         )}
 
-        {sinceLast && (sinceLast.newCount > 0 || sinceLast.clearedCount > 0) && (
+        {sinceLast && sinceLast.newCount > 0 && (
           <Card className="flex-row flex-wrap items-center justify-between gap-2 bg-muted/40 px-4 py-2.5 text-sm">
             <span>
               <span className="text-muted-foreground">Since your last visit ({timeAgo(sinceLast.at)}):</span>{" "}
               <span className={`font-mono font-medium ${sinceLast.newCount ? LEVEL_TEXT.critical : ""}`}>
                 {sinceLast.newCount} new
-              </span>{" "}
-              ·{" "}
-              <span className={`font-mono font-medium ${sinceLast.clearedCount ? LEVEL_TEXT.ok : ""}`}>
-                {sinceLast.clearedCount} resolved
               </span>{" "}
               · <span className="font-mono font-medium">{sinceLast.stillOpen}</span> still open
             </span>
@@ -515,7 +499,6 @@ export default function Health() {
               <OverviewTab
                 report={report}
                 projects={projects}
-                resolved={resolved}
                 lifecycle={lifecycle}
                 findingCounts={findingCounts}
                 errorTotal={errorTotal}

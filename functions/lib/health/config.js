@@ -190,10 +190,6 @@ const LIMITS = {
   entitiesPerProject: 25,
   topErrorsPerProject: 10,
   reportRetentionDays: 90,
-  // health_findings/{key}: `resolved` docs are pruned this long after
-  // resolvedAt; `open`/`unknown`/`acked` are kept forever since an open
-  // finding is by definition still true (plan.md S1.8).
-  lifecycleRetentionDays: 90,
 };
 
 // Second-precision ISO, the one timestamp shape everything in the sweep is

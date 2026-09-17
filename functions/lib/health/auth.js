@@ -8,8 +8,11 @@
 const { google } = require("googleapis");
 
 // Scope is not permission. These say what kind of API the token may address;
-// what it may actually read is decided by IAM, and this account holds only
-// monitoring.viewer + logging.viewer, so a broad scope grants it nothing extra.
+// what it may actually read is decided by IAM. The SA now also holds
+// iam.securityReviewer, serviceusage.apiKeysViewer and run.viewer
+// (scripts/health-iam.sh, added for the sa-key/broad-role/api-key hygiene
+// checks and deploy correlation), so a broad scope no longer grants it
+// nothing extra the way the comment below used to claim.
 //
 // `cloud-platform.read-only` looks like the tighter, more obvious choice and was
 // the original value here — but the Monitoring API doesn't accept it, and every
@@ -20,6 +23,16 @@ const SCOPES = [
   "https://www.googleapis.com/auth/monitoring.read",
   "https://www.googleapis.com/auth/logging.read",
   "https://www.googleapis.com/auth/bigquery.readonly",
+  // IAM Admin API (serviceAccounts/keys), Cloud Resource Manager
+  // (getIamPolicy) and Run Admin API (deploy correlation) don't accept any
+  // of the narrower scopes above -- they need cloud-platform. Without this,
+  // every call iam.js/deploys.js makes 403s with "Request had insufficient
+  // authentication scopes" REGARDLESS of the SA's IAM role bindings being
+  // correct, which is exactly what happened here: the roles above were
+  // granted but this scope list was never updated to match, so
+  // sa-key/broad-role/api-key/deploy findings silently stopped reporting on
+  // every project rather than erroring loudly.
+  "https://www.googleapis.com/auth/cloud-platform",
 ];
 
 let cached = null;

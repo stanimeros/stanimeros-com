@@ -144,46 +144,42 @@ manual runs update this store but deliberately don't touch `health_state/latest`
   "text":      "firestore.reads 804 vs baseline 4 (201.0x)",  // newest occurrence
   "firstSeen": "2026-09-10T03:00:00Z",       // ISO-8601 UTC
   "lastSeen":  "2026-09-16T11:33:03Z",
-  "state":     "open",                       // open | resolved | unknown | acked
-  "resolvedAt": null,                        // set the first run the key is absent from a project that WAS checked
+  "state":     "open",                       // open | acked -- that's the whole set
   "runsSeen":  14,
-  "reopenCount": 2,                          // resolved -> open again within 48h = flapping
   "ackedUntil": null,                        // ISO-8601 UTC, or null = acked with no expiry (when state is "acked")
   "ackedBy":   null,                         // uid that called ackFinding, or null
 
-  // Deploy correlation (see "Amendment: deploy correlation" below). Always
-  // present, but only ever populated for a function/run-shaped kind -- an
-  // estate-hygiene or cost/quota finding has no deploy to point at, so these
-  // stay at their empty defaults (null / [] / 0) for the life of the doc.
+  // Deploy trail. Always present, but only ever populated for a
+  // function/run-shaped kind -- an estate-hygiene or cost/quota finding has
+  // no deploy to point at, so these stay at their empty defaults
+  // (null / [] / 0) for the life of the doc.
   "deployedAt":   "2026-09-16T09:00:00Z",    // latest deploy time seen for this finding's
                                               // entity, or null if none is known yet
   "deploys":      ["2026-09-15T00:00:00Z"],  // bounded trail of deploys observed WHILE this
                                               // finding stayed open, oldest first, capped at 10
-  "deploysSinceFirstSeen": 2,                // count of entries ever pushed onto `deploys` --
+  "deploysSinceFirstSeen": 2                 // count of entries ever pushed onto `deploys` --
                                               // "still failing, N deploys later"
-  "resolvedAfterDeploy": null                // set only at the moment a finding resolves: the
-                                              // nearest deploy that fell between `lastSeen` and
-                                              // `resolvedAt`, or null if none did. A correlation
-                                              // to show alongside the resolution, never the
-                                              // reason for it -- see the amendment.
 }
 ```
 
-State transitions (plan.md S1.2/S1.3/S1.5):
+State transitions -- ack is the only lifecycle control point, there is no
+"resolved":
 
 - Present in this run -> `open` (or stays `acked` if the ack hasn't expired
   and the finding hasn't escalated warn -> critical, which un-acks it).
-- Absent this run, project checked cleanly -> `resolved`, `resolvedAt` set.
-- Absent this run, project in `projectErrors` (or dropped out of `PROJECTS`
-  entirely) -> `unknown`, **never** `resolved` -- this is the load-bearing
-  rule (plan.md S1.3/B2): less visibility must never read as good news.
-- `resolved` reappearing within 48h -> back to `open`, `reopenCount` += 1,
-  `firstSeen` unchanged (flapping). Reappearing later than 48h -> treated as
-  a fresh occurrence of the same key: `firstSeen` reset, `reopenCount` reset.
+- Absent this run -> the document, if any, is left completely untouched.
+  There used to be a resolved/unknown state machine here (present -> absent
+  meant "resolved", guarded by whether the project was actually read this
+  run so a 403'd project didn't read as a wave of false resolutions) --
+  removed because a partial collector failure could still slip through that
+  guard and mask itself as a real fix (see auth.js's SCOPES history). What
+  the dashboard shows for "is this still a problem" is simply whatever's in
+  the *current* report's `findings`; this collection only ever tracks ack
+  state and first/last-seen for keys that are currently present.
 
-Retention: `resolved` docs are deleted `LIMITS.lifecycleRetentionDays` (90)
-days past `resolvedAt`, in the same scheduled pass as `pruneOldReports`.
-`open`/`unknown`/`acked` are kept forever.
+No retention pass: nothing here is ever deleted automatically. A stale doc
+for a key that stopped appearing just sits inert until the key reappears (in
+which case it picks the doc back up as a continuation) or someone acks it.
 
 ## `health_seen/{uid}`
 
@@ -322,14 +318,9 @@ lowercase; a function's own name, e.g. `analyzeEntities`, is camelCase) --
 the same fold `analyze.js`'s `dropRunShadows` already applies to pair a
 gen-2 function with its Cloud Run shadow.
 
-**The one rule that matters more than any field below: a deploy never
-resolves a finding.** Resolution is, and stays, exactly what it always was --
-the check stopped firing this run (`planLifecycleUpdate`, unchanged). If a
-redeploy could mark a finding resolved on its own, a redeploy that *didn't*
-fix the bug would silently clear a real, still-true finding -- strictly worse
-than not correlating deploys at all, since a false "resolved" reads exactly
-like good news. Every field this amendment adds is annotation layered
-alongside a `state` decision that has no idea deploys exist.
+The deploy trail is annotation only -- it never feeds back into `state`
+(open/acked, see `health_findings/{key}` above; there is no "resolved" for it
+to correlate with any more).
 
 - `metrics`/`findings` are unaffected except: a finding for a
   function/run-shaped kind (`function`/`run` `errors`/`silent`/`spike`) may
@@ -349,15 +340,6 @@ alongside a `state` decision that has no idea deploys exist.
   -- exactly the moment someone would otherwise assume the fix worked and
   move on. The first sighting of a deploy time establishes a baseline, not a
   "redeploy since" -- there's no earlier deploy to compare it to yet, so
-  counting it would overstate how many fixes have actually been tried.
-  Deploy history resets on a genuinely fresh occurrence of a key (past the
-  48h reopen window) since that's an unrelated incident, but carries through
-  a within-window flap (same incident, briefly not observed) and through
-  `acked`/`unknown` transitions.
-- `resolvedAfterDeploy` is written only at the moment a finding transitions
-  to `resolved`: the nearest deploy that fell strictly after the finding's
-  `lastSeen` and no later than `resolvedAt`, or null if none did. It is
-  presented as **correlation, never causation** -- the finding could have
-  cleared for an unrelated reason at the same moment -- and any user-facing
-  text built from it should say "correlates with" / "since the last deploy",
-  never "fixed by".
+  counting it would overstate how many fixes have actually been tried. The
+  trail carries through an `acked` finding untouched, same as everything
+  else in the doc.

@@ -417,16 +417,10 @@ exports.ackFinding = onCall({ enforceAppCheck: true }, async (request) => {
   const doc = await ref.get();
   if (!doc.exists) throw new HttpsError("not-found", "No such finding.");
 
-  // Only `state` transitions this callable is allowed to make are
-  // open/unknown -> acked and acked -> open. Writing `state` unconditionally
-  // would let an ack toggle overwrite a `resolved` finding -- clearing an ack
-  // on something that has since cleared would mark it open again, and the
-  // dashboard would show a fixed problem as live. The ack fields themselves
-  // still move either way; only the state is guarded.
+  // Only two states exist, open and acked, so this is a straight toggle.
   const current = doc.data().state;
   if (ack) {
-    const state = current === "open" || current === "unknown" ? "acked" : current;
-    await ref.set({ state, ackedUntil: until, ackedBy: uid }, { merge: true });
+    await ref.set({ state: "acked", ackedUntil: until, ackedBy: uid }, { merge: true });
   } else {
     const state = current === "acked" ? "open" : current;
     await ref.set({ state, ackedUntil: null, ackedBy: null }, { merge: true });

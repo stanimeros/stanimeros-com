@@ -41,11 +41,15 @@ export function SeverityTab({
       else active.push(row)
     }
   }
-  // Longest-open first: the one that's been broken for six days outranks the
-  // one that appeared this sweep.
-  active.sort((a, b) =>
-    (lifecycle.get(a.key)?.firstSeen ?? "").localeCompare(lifecycle.get(b.key)?.firstSeen ?? "")
-  )
+  // Highest repeat count first -- the thing firing 40 times an hour outranks
+  // the thing that fired once, regardless of which one happened to start
+  // first. Longest-open is still the tiebreaker for two findings at the same
+  // count, so ties don't fall back to insertion order.
+  active.sort((a, b) => {
+    const byCount = (b.count ?? 1) - (a.count ?? 1)
+    if (byCount !== 0) return byCount
+    return (lifecycle.get(a.key)?.firstSeen ?? "").localeCompare(lifecycle.get(b.key)?.firstSeen ?? "")
+  })
 
   // Errors is the actual (raw) Cloud Logging error count for the projects in
   // view, not a count of critical findings — same definition as the nav

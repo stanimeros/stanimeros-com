@@ -145,7 +145,13 @@ async function readErrors(projectId, hours, token) {
       orderBy: "timestamp desc",
       pageSize: PAGE_SIZE,
     });
-  } catch {
+  } catch (err) {
+    // Unlike iam.js/deploys.js, this used to fail silently -- count:null
+    // correctly kept a broken read from reading as "no errors" on the
+    // dashboard, but with nothing logged, a real failure here (bad scope,
+    // API disabled, timeout) was indistinguishable from "genuinely nothing
+    // to report" from the Cloud Functions logs alone.
+    console.log(`logging: entries:list unavailable for ${projectId} -- ${String((err && err.message) || err).slice(0, 200)}`);
     return { ...EMPTY };
   }
   if (!payload) return { ...EMPTY };

@@ -16,7 +16,7 @@ const { collectIam } = require("./iam");
 const { collectDeploys } = require("./deploys");
 const { analyzeProject, worstLevel } = require("./analyze");
 const { notifyIfNew, newKeys } = require("./notify");
-const { updateLifecycle, pruneLifecycle } = require("./lifecycle");
+const { updateLifecycle } = require("./lifecycle");
 
 if (!admin.apps.length) admin.initializeApp();
 
@@ -268,17 +268,15 @@ async function runHealthCheck({ mode = "scheduled" } = {}) {
   }
 
   // Unlike health_state/latest above, health_findings is updated on every
-  // run, manual included (plan.md S1.8). The two stores exist for different
-  // reasons: health_state/latest arms the next scheduled email, and a manual
-  // run must leave it alone or "Run now" would silently disarm that email.
-  // health_findings is just bookkeeping over what actually happened -- if
-  // you hit "Run now" after a fix, seeing the finding move to resolved is
-  // the whole point. Do not couple these two stores to "fix" that asymmetry;
-  // it's deliberate.
+  // run, manual included. The two stores exist for different reasons:
+  // health_state/latest arms the next scheduled email, and a manual run must
+  // leave it alone or "Run now" would silently disarm that email.
+  // health_findings is just bookkeeping over what actually happened -- ack
+  // state, first/last seen, runs seen. Do not couple these two stores to
+  // "fix" that asymmetry; it's deliberate.
   await updateLifecycle(db, report, new Date(report.generated));
 
   const pruned = await pruneOldReports(db);
-  await pruneLifecycle(db, LIMITS.lifecycleRetentionDays);
 
   return {
     runId: report.runId,

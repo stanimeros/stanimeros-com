@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { CostBreakdown, Finding, Level, LifecycleFinding, ProjectResult } from "./types"
-import { LEVEL_ICON, LEVEL_LABEL, LEVEL_TEXT } from "./levels"
+import { LEVEL_CHIP_BG, LEVEL_ICON, LEVEL_LABEL, LEVEL_TEXT } from "./levels"
 import { duration, exactTime, findingsToMarkdown, formatMoney } from "./format"
 
 export function StatusIcon({ level, className = "" }: { level: Level; className?: string }) {
@@ -28,6 +28,17 @@ export function ExpandArrow({ open, className = "" }: { open: boolean; className
       aria-hidden="true"
     />
   )
+}
+
+/** How loud the repeat-count badge should be: a lone occurrence is routine
+ *  (muted), 2–10 is worth a glance (warn/orange), and double digits is
+ *  probably the thing to look at first (critical/red) — independent of the
+ *  finding's own level, since a `low` finding that fired 40 times is a
+ *  different story than one that fired once. */
+function countTone(count: number): string {
+  if (count > 10) return `${LEVEL_CHIP_BG.critical} ${LEVEL_TEXT.critical}`
+  if (count > 1) return `${LEVEL_CHIP_BG.warn} ${LEVEL_TEXT.warn}`
+  return "bg-muted text-foreground"
 }
 
 /** Dumps a findings list as Markdown to the clipboard, phrased for pasting
@@ -201,20 +212,20 @@ export function FindingRow({
           open {duration(life.firstSeen)}
         </span>
       )}
-      {/* A finding that keeps clearing and coming back is a different
-          problem from one that simply stays broken. */}
-      {life && life.reopenCount > 0 && (
-        <span className={`shrink-0 font-mono text-xs ${LEVEL_TEXT.warn}`} title="Cleared and came back">
-          flapping ×{life.reopenCount}
-        </span>
-      )}
       {onAck && (
         <button
           type="button"
           onClick={() => onAck(finding.key, life?.state !== "acked")}
-          className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
+          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
         >
-          {life?.state === "acked" ? "un-ack" : "ack"}
+          {life?.state === "acked" ? (
+            <>
+              <Check className="size-3" aria-hidden="true" />
+              Acknowledged
+            </>
+          ) : (
+            "Acknowledge"
+          )}
         </button>
       )}
     </li>
@@ -253,15 +264,15 @@ export function FindingsTable({
         <colgroup>
           <col className="w-24 sm:w-32" />
           <col className="w-28 sm:w-36" />
-          <col className="w-12" />
           <col />
+          <col className="w-12" />
         </colgroup>
         <thead className="text-xs text-muted-foreground">
           <tr className="text-left">
             <th className="py-1 pr-2 font-normal">Project</th>
             <th className="py-1 pr-2 font-normal">Kind</th>
-            <th className="py-1 pr-2 font-normal">Count</th>
             <th className="py-1 pr-2 font-normal">Message</th>
+            <th className="py-1 pr-2 font-normal">Count</th>
           </tr>
         </thead>
         <tbody>
@@ -309,20 +320,24 @@ export function FindingsTable({
                       )}
                     </span>
                   </td>
+                  <td className="truncate py-1.5 pr-2 text-muted-foreground">{finding.text}</td>
                   {/* Its own column, not a suffix baked into `text` -- that
                       used to get clipped along with the rest of a long
-                      message the moment the row truncated. */}
+                      message the moment the row truncated. Always shown, not
+                      just when > 1 -- a kind with no natural repeat count
+                      (spike, sa-key, broad-role...) still happened once, so
+                      it defaults to 1 rather than leaving the column blank
+                      and looking like the row is missing data. Last column,
+                      not front-loaded -- Message is the thing actually being
+                      scanned row to row. */}
                   <td className="py-1.5 pr-2">
-                    {finding.count !== undefined && finding.count > 1 && (
-                      <span
-                        className="rounded bg-muted px-1 font-mono text-[10px] text-foreground"
-                        title={`Happened ${finding.count} times`}
-                      >
-                        ×{finding.count}
-                      </span>
-                    )}
+                    <span
+                      className={`rounded px-1 font-mono text-[10px] ${countTone(finding.count ?? 1)}`}
+                      title={`Happened ${finding.count ?? 1} time${(finding.count ?? 1) === 1 ? "" : "s"}`}
+                    >
+                      ×{finding.count ?? 1}
+                    </span>
                   </td>
-                  <td className="truncate py-1.5 pr-2 text-muted-foreground">{finding.text}</td>
                 </tr>
                 {/* Always mounted (not `expanded && <tr>`), collapsed to zero
                     height via grid-rows -- that's what actually makes the
@@ -355,12 +370,6 @@ export function FindingsTable({
                               <dd>{exactTime(life.lastSeen)}</dd>
                               <dt className="text-muted-foreground">Seen in</dt>
                               <dd>{life.runsSeen} runs</dd>
-                              {life.reopenCount > 0 && (
-                                <>
-                                  <dt className={LEVEL_TEXT.warn}>Flapping</dt>
-                                  <dd className={LEVEL_TEXT.warn}>×{life.reopenCount}</dd>
-                                </>
-                              )}
                               {life.ackedUntil && (
                                 <>
                                   <dt className="text-muted-foreground">Acked until</dt>
@@ -383,9 +392,16 @@ export function FindingsTable({
                                   e.stopPropagation()
                                   onAck(finding.key, life?.state !== "acked")
                                 }}
-                                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                                className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
                               >
-                                {life?.state === "acked" ? "un-ack" : "ack"}
+                                {life?.state === "acked" ? (
+                                  <>
+                                    <Check className="size-3" aria-hidden="true" />
+                                    Acknowledged
+                                  </>
+                                ) : (
+                                  "Acknowledge"
+                                )}
                               </button>
                             )}
                           </div>
