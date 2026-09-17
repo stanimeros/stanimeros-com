@@ -42,7 +42,9 @@ test("parseBroadBindings excludes Google-managed service agents whose role can't
   assert.deepEqual(parseBroadBindings(policy), []);
 });
 
-test("parseBroadBindings tags GCP's default compute/appspot service accounts as isDefaultAgent, and a custom SA as not", () => {
+test("parseBroadBindings drops roles/editor on GCP's default agents -- the factory setting, on every project, forever", () => {
+  // 25 of this estate's 27 broad-role findings were exactly these two shapes,
+  // and they buried the hand-created account sitting next to them.
   const policy = {
     bindings: [
       { role: "roles/editor", members: ["serviceAccount:12345-compute@developer.gserviceaccount.com"] },
@@ -51,10 +53,23 @@ test("parseBroadBindings tags GCP's default compute/appspot service accounts as 
     ],
   };
   const out = parseBroadBindings(policy);
-  const byEmail = Object.fromEntries(out.map((b) => [b.email, b.isDefaultAgent]));
-  assert.equal(byEmail["12345-compute@developer.gserviceaccount.com"], true);
-  assert.equal(byEmail["myproj@appspot.gserviceaccount.com"], true);
-  assert.equal(byEmail["custom-deploy-bot@myproj.iam.gserviceaccount.com"], false);
+  assert.equal(out.length, 1, "only the hand-created account is a finding");
+  assert.equal(out[0].email, "custom-deploy-bot@myproj.iam.gserviceaccount.com");
+  assert.equal(out[0].isDefaultAgent, false);
+});
+
+test("parseBroadBindings keeps roles/owner on a default agent -- nothing grants that automatically", () => {
+  // The exclusion is for the factory grant only. Owner on a default agent
+  // means a human did it, which is exactly what this check is for.
+  const policy = {
+    bindings: [
+      { role: "roles/owner", members: ["serviceAccount:12345-compute@developer.gserviceaccount.com"] },
+      { role: "roles/owner", members: ["serviceAccount:myproj@appspot.gserviceaccount.com"] },
+    ],
+  };
+  const out = parseBroadBindings(policy);
+  assert.equal(out.length, 2);
+  assert.ok(out.every((b) => b.role === "roles/owner" && b.isDefaultAgent === true));
 });
 
 test("parseBroadBindings de-dupes the same role+email appearing in more than one conditional binding", () => {

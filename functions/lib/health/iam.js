@@ -38,14 +38,35 @@ function parseUserManagedKeys(keysPayload) {
 // merely tagged.
 const UNMANAGED_AGENT_RE = /@(cloudservices|system)\.gserviceaccount\.com$/;
 
-// Google *does* create these with roles/editor by default, and narrowing them
-// is both possible and a real, commonly-cited best practice -- but because
-// that default applies to nearly every GCP project unless someone has
-// already gone out of their way to fix it, seeing one here says much less
-// about a specific mistake than a broad role on a hand-created service
-// account does. Tagged, not excluded, so the finding text can say which case
-// this is instead of reading like an unexplained one-off.
+// GCP's own default runtime identities: the App Engine and Compute Engine
+// default service accounts. Gen-2 Cloud Functions run AS the compute one, so
+// these are not leftovers to delete -- they're what the code executes under.
 const DEFAULT_AGENT_RE = /^[^@]+-compute@developer\.gserviceaccount\.com$|^[^@]+@appspot\.gserviceaccount\.com$/;
+
+/**
+ * roles/editor on one of those accounts is GCP's factory setting, applied at
+ * project creation unless `constraints/iam.automaticIamGrantsForDefaultServiceAccounts`
+ * was already enforced (newer projects; ours predate it). So it is present on
+ * every project, identical on every run, and says nothing about any specific
+ * one -- 25 of this estate's 27 broad-role findings were exactly this, and
+ * they buried the two that weren't: a hand-made account with roles/editor,
+ * and another holding roles/owner outright.
+ *
+ * Excluded for the same reason as UNMANAGED_AGENT_RE above: permanent,
+ * everywhere, not a per-project signal. The difference is that this one IS
+ * fixable -- narrowing these grants is a real best practice -- but it's a
+ * deliberate estate-wide project with genuine breakage risk (gen-2 functions
+ * need run.invoker, artifactregistry.reader, storage.objectViewer,
+ * logging.logWriter and whatever each function touches), not something a
+ * health sweep should nag about three times a day.
+ *
+ * Deliberately narrow: `roles/owner` on a default agent is NOT excluded.
+ * Nothing grants that automatically, so someone did it on purpose and it is
+ * worth seeing. Hand-created accounts are never excluded at all.
+ */
+function isFactoryDefaultGrant(email, role) {
+  return role === "roles/editor" && DEFAULT_AGENT_RE.test(email);
+}
 
 /**
  * Project-level bindings, filtered to service-account members holding a
@@ -64,6 +85,7 @@ function parseBroadBindings(policy) {
       if (!member.startsWith("serviceAccount:")) continue;
       const email = member.slice("serviceAccount:".length);
       if (UNMANAGED_AGENT_RE.test(email)) continue;
+      if (isFactoryDefaultGrant(email, binding.role)) continue;
       const dedupeKey = `${binding.role}:${email}`;
       if (seen.has(dedupeKey)) continue;
       seen.add(dedupeKey);

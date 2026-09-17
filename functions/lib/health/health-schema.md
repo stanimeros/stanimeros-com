@@ -266,6 +266,15 @@ no findings (not "not checked") on a project whose IAM/API-keys read grant
 hasn't rolled out yet -- see `functions/lib/health/iam.js` and
 `scripts/health-iam.sh`.
 
+`broad-role` excludes one case deliberately: `roles/editor` on GCP's own
+default App Engine / Compute Engine service accounts. That is the factory
+grant applied at project creation, so it is present on every project in the
+estate, identical on every run, and says nothing about any one of them --
+25 of 27 broad-role findings were this, and they buried the two that were
+real. `roles/owner` on a default agent is still reported (nothing grants it
+automatically), as is any broad role on a hand-created account. See
+`isFactoryDefaultGrant` in `iam.js`.
+
 ## Amendment: three severity tiers (`low`)
 
 Two tiers (`critical`/`warn`) collapsed two very different things into amber:
@@ -285,8 +294,8 @@ hard-coding a comparison).
   `unauthenticated`, `unreadable`.
 - **`low`** — estate hygiene: true, but not an incident, and often not
   fixable today. `api_key_warning` / `api-key`, `service_account_warning`,
-  `sa-key` (a downloadable key, any age), and `broad-role` (any account,
-  GCP's own default agent or hand-created).
+  `sa-key` (a downloadable key, any age), and `broad-role` (a hand-created
+  account with a broad role, or a default agent with `roles/owner`).
 
 The kind -> level mapping lives in one place, `LEVEL_BY_KIND` in
 `functions/lib/health/config.js`, for every kind whose severity doesn't
