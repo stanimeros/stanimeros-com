@@ -66,7 +66,15 @@ chronologically and is unique per run.
                                              // function errors|function silent|function spike|
                                              // run errors|run silent|run spike|
                                              // missing_index|rules_denied|quota_exhausted|
-                                             // billing|deploy_failure|sa-key|broad-role|api-key
+                                             // billing|deploy_failure|out_of_memory|
+                                             // function_crash|function_timeout|unauthenticated|
+                                             // api_key_warning|service_account_warning|
+                                             // unreadable|sa-key|broad-role|api-key
+                                             //
+                                             // A log-derived finding is named by
+                                             // classify() (logging.js) when it
+                                             // recognises the message; "errors" is
+                                             // the fallback for an unclassified one.
       "text":  "firestore.reads 804 vs baseline 4 (201.0x)",
       "deployedAt": "2026-09-15T10:02:00Z"    // present ONLY on function/run-shaped kinds
                                               // (function|run errors/silent/spike) whose entity
@@ -103,7 +111,10 @@ chronologically and is unique per run.
     }
   ],
 
-  "errorCount":     7,                       // null when the log read failed
+  "errorCount":     7,                       // null when the log read failed. Excludes the
+                                             // sweep's own noise: BigQuery job audit entries
+                                             // (SELF_AUDIT_TYPES) and project-scoped permission
+                                             // denials (isSelfAuditDenial), both in logging.js
   "errorTruncated": false,                   // true = hit the 1000-entry cap, real count higher
   "errorKinds":     { "missing_index": 2, "other": 5 },
   "errorSources":   { "function:onStudioCreated": 2 },
@@ -264,12 +275,14 @@ tier, `low`, separates them out. Ordering, worst first:
 -- `worstLevel()` and every findings sort walk this array rather than
 hard-coding a comparison).
 
-- **`critical`** — a real failure. `errors` (any ERROR-severity log entry,
-  `cfg.criticalErrors`), `quota_exhausted`, `billing`, `deploy_failure`, and
-  `function errors` / `run errors`.
+- **`critical`** — a real failure. `errors` (an ERROR-severity log entry no
+  pattern recognised, at `cfg.criticalErrors`), `quota_exhausted`, `billing`,
+  `deploy_failure`, `out_of_memory`, `function_crash`, `function_timeout`,
+  and `function errors` / `run errors`.
 - **`warn`** — something is off, but nothing is currently failing. `spike`,
   `stall`, `failures`, `function silent` / `run silent`,
-  `function spike` / `run spike`, `missing_index`, `rules_denied`.
+  `function spike` / `run spike`, `missing_index`, `rules_denied`,
+  `unauthenticated`, `unreadable`.
 - **`low`** — estate hygiene: true, but not an incident, and often not
   fixable today. `api_key_warning` / `api-key`, `service_account_warning`,
   `sa-key` (a downloadable key, any age), and `broad-role` (any account,

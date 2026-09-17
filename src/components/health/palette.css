@@ -1,30 +1,26 @@
 /*
- * Health dashboard chart palette (plan.md, "Chart layer"; restyle per the
- * approved health-console mockup).
+ * Health dashboard palette.
  *
- * The one law: on this page color means severity and nothing else. Status
- * colors below are reserved for status and never reused for quantity — the
- * exact hex values are taken from the mockup's `:root` block. Quantity
- * charts (Series) use the monochrome sequential scale below, which is grey,
- * not blue — the previous blue accent is gone. Nothing on this page encodes
- * identity, so there is no categorical set.
+ * The one law: on this page color means severity and nothing else. The status
+ * colors below are reserved for status and never reused for quantity.
+ * Quantity charts (Series) use the monochrome sequential scale, which is
+ * grey, not blue. Nothing on this page encodes identity, so there is no
+ * categorical set.
  *
- * All values are the ones validated in plan.md against this page's two
- * surfaces (white; dark card #262626) for colorblind separation and
- * contrast. Do not substitute Tailwind palette values here.
+ * Every value is checked against this page's two surfaces (white; dark card
+ * #262626) for colorblind separation and contrast. Do not substitute Tailwind
+ * palette values here.
  *
- * Written theme-aware from the start (ahead of plan.md 5.4's light/dark
- * toggle): light values live on :root, dark values apply automatically via
- * prefers-color-scheme, and an explicit [data-theme="dark"] / [data-theme=
- * "light"] on the root element overrides the system preference either way.
- * The page is light-committed (mockup decision 6): light is the default and
- * gets the care; dark stays supported for the toggle, not restyled to match.
+ * Theme-aware: light values live on :root, dark values apply automatically
+ * via prefers-color-scheme, and an explicit [data-theme="dark"] /
+ * [data-theme="light"] on the root element overrides the system preference
+ * either way. The page is light-committed: light is the default and gets the
+ * care; dark stays supported for the toggle, not restyled to match.
  */
 
 :root {
   /* Status — reserved, never used for anything else. Identical in both
-     themes; already validated against white and the dark card. Exact hex
-     from the mockup's :root block. */
+     themes; checked against white and the dark card. */
   --hc-critical: #c62f2f;
   --hc-warn: #c07800;
   --hc-good: #0e8f24;
@@ -32,8 +28,8 @@
      fourth saturated hue and not readable as amber or green. */
   --hc-low: #8a8a8a;
 
-  /* Sequential (Series, the one quantity chart), light -> dark grey. No hue: these are quantity marks, not severity, and
-     the mockup retires the old blue accent entirely. Same in both themes. */
+  /* Sequential (Series, the one quantity chart), light -> dark grey. No hue:
+     these are quantity marks, not severity. Same in both themes. */
   --hc-seq-1: #e4e4e4;
   --hc-seq-2: #cfcfcf;
   --hc-seq-3: #b5b5b5;

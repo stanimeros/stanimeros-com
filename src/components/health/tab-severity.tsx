@@ -1,6 +1,6 @@
 // One severity, estate-wide and flat, the project reduced to a badge. The
-// Errors tab additionally carries the raw Cloud Logging panels, since that's
-// the only place the findings-vs-log-lines distinction matters.
+// Critical tab additionally carries the raw Cloud Logging figures, since
+// that's the only place the findings-vs-log-lines distinction matters.
 
 import type { ReactNode } from "react"
 import { CheckCircle2 } from "lucide-react"
@@ -11,9 +11,8 @@ import { findingsToMarkdown } from "./format"
 import { CollapsedSection, CopyMarkdownButton, FindingsTable, StatusIcon } from "./primitives"
 
 /** One severity, estate-wide and flat, the project reduced to a badge on the
- *  row. Grouping by project instead is what made the old Projects and Errors
- *  tabs read as the same screen twice — the per-project drill-down still
- *  exists, under "All projects" on Overview. */
+ *  row. Grouping by project instead is what made two tabs read as the same
+ *  screen twice — the per-project drill-down lives on the Projects tab. */
 export function SeverityTab({
   level,
   projects,
@@ -51,14 +50,27 @@ export function SeverityTab({
     return (lifecycle.get(a.key)?.firstSeen ?? "").localeCompare(lifecycle.get(b.key)?.firstSeen ?? "")
   })
 
-  // Errors is the actual (raw) Cloud Logging error count for the projects in
-  // view, not a count of critical findings — same definition as the nav
-  // badge and Overview, scoped to whatever the project filter selects.
-  const headerCount =
-    level === "critical" ? projects.reduce((sum, p) => sum + (p.errorCount ?? 0), 0) : active.length
+  // Counts the rows in the table below it, for every level. This used to be
+  // the raw Cloud Logging line count for `critical` only, which meant the
+  // header and the list it labelled measured different things: 40 denied-call
+  // lines grade `warn`, so the card could read "Errors (40)" above two rows —
+  // or the tab could say "Nothing critical" under a badge of 40.
+  const headerCount = active.length
+
+  // The raw log-line total is a genuinely useful number, just a different one.
+  // It gets its own line rather than being passed off as a finding count.
+  const logLines = projects.reduce((sum, p) => sum + (p.errorCount ?? 0), 0)
+  const truncated = level === "critical" && projects.some((p) => p.errorTruncated)
 
   return (
     <div className="space-y-3">
+      {level === "critical" && logLines > 0 && (
+        <p className="text-xs text-muted-foreground">
+          {logLines.toLocaleString("en-US")} error log line{logLines === 1 ? "" : "s"} in the window
+          {truncated ? " (hit the 1,000-entry cap — the real number is higher)" : ""}, grouped into the findings below.
+        </p>
+      )}
+
       {active.length === 0 ? (
         <Card className="gap-1 px-4 py-3 text-sm">
           <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.ok}`}>
@@ -95,9 +107,8 @@ export function SeverityTab({
   )
 }
 
-/** The raw Cloud Logging side of "errors" — just the read-failure notice.
- *  Lives under the Errors tab because that's the only place it matters; the
- *  messages themselves are the findings table above. */
+/** The read-failure notice: projects whose log could not be read at all, so
+ *  their absence of findings means "unknown", not "clean". */
 export function ErrorLogPanels({ projects }: { projects: ProjectResult[] }) {
   const unread = projects.filter((p) => p.errorCount === null)
   if (unread.length === 0) return null

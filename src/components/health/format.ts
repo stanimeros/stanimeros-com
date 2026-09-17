@@ -30,7 +30,7 @@ export function timeAgo(iso: string) {
   return `${Math.round(hours / 24)}d ago`
 }
 
-/** Compact age, for "open 6d" / "open 4h" beside a finding. */
+/** Compact age, for the "Open" row of a finding's expanded detail panel. */
 export function duration(fromIso: string, toIso?: string | null) {
   const minutes = Math.round(((toIso ? new Date(toIso).getTime() : Date.now()) - new Date(fromIso).getTime()) / 60000)
   if (minutes < 60) return `${Math.max(1, minutes)}m`
@@ -40,7 +40,7 @@ export function duration(fromIso: string, toIso?: string | null) {
 }
 
 /** Exact local time for a title attribute — `timeAgo` rounds too hard to
- *  correlate a finding with a deploy (plan.md §2.2). */
+ *  correlate a finding with a deploy. */
 export function exactTime(iso: string) {
   return new Date(iso).toLocaleString()
 }
@@ -93,7 +93,7 @@ export function writeLocalStorage(key: string, value: string) {
   }
 }
 
-/** Parse `#tab=projects&project=foo&level=critical` into a plain object. */
+/** Parse `#tab=warnings&project=foo` into a plain object. */
 function parseHash(hash: string): Record<string, string> {
   const out: Record<string, string> = {}
   const raw = hash.replace(/^#/, "")
@@ -112,7 +112,7 @@ function buildHash(params: Record<string, string | null | undefined>): string {
   return parts.length ? `#${parts.join("&")}` : ""
 }
 
-/** 4.4 — one filter row's worth of state, persisted in the URL hash so a
+/** One filter row's worth of state, persisted in the URL hash so a
  *  filtered view is linkable. Reads the hash once on mount (SSR-safe: this
  *  only runs client-side, in an effect) and keeps it in sync via
  *  `history.replaceState` — never `pushState`, so filtering doesn't spam

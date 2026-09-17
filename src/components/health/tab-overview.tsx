@@ -1,7 +1,6 @@
-// Overview is a landing screen, not a report. Everything it shows also lives
-// in a severity tab or the project drill-down, so keeping it to one screen
-// loses nothing — which is why all but the worst few findings sit behind a
-// collapsed row here.
+// Overview is a landing screen, not a report: the estate in one strip, then
+// one card per project. Every finding it counts is listed in full on a
+// severity tab, so nothing here needs to show findings themselves.
 
 import { AlertCircle, CheckCircle2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
@@ -27,13 +26,12 @@ function ProjectOverviewCard({
     if (lifecycle.get(finding.key)?.state === "acked") continue
     counts[finding.level] += 1
   }
-  // "errors" is the actual count of errors — the raw Cloud Logging error
-  // count for this project, not a count of critical *findings*. Findings are
-  // an analyzed subset of what's wrong; this is the real number of errors
-  // that happened. Warnings/low stay finding counts (there's no raw-log
-  // equivalent — those aren't "logged" the way errors are).
+  // All three are finding counts, so the row reads as one series. The raw
+  // Cloud Logging line count used to sit in the first cell — a different
+  // measure over a different window, which made the three numbers look
+  // comparable when they weren't. It lives on the Critical tab now.
   const cells: { label: string; value: number; tone: string; tab: string }[] = [
-    { label: "errors", value: project.errorCount ?? 0, tone: LEVEL_TEXT.critical, tab: "errors" },
+    { label: "critical", value: counts.critical, tone: LEVEL_TEXT.critical, tab: "errors" },
     { label: "warnings", value: counts.warn, tone: LEVEL_TEXT.warn, tab: "warnings" },
     { label: "low", value: counts.low, tone: LEVEL_TEXT.low, tab: "low" },
   ]
@@ -72,7 +70,7 @@ function ProjectOverviewCard({
 }
 
 /** The estate in one line. Replaces the proportion-bar card: at fifteen
- *  projects the bar's segments were never the thing being read, the numbers
+ *  projects the bar's segments were never the thing being read — the numbers
  *  beside it were. */
 export function StatStrip({
   report,
@@ -83,14 +81,16 @@ export function StatStrip({
   findingCounts: Record<Exclude<Level, "ok">, number>
   errorTotal: number
 }) {
-  // "errors" is the actual count of errors — the raw Cloud Logging total
-  // across the estate, not a count of critical findings — matching the
-  // per-project cards. warnings/low stay finding counts.
+  // Findings for the three severities, then projects for "healthy" — the
+  // trailing "of N projects" is what says the last number counts something
+  // else. The raw log-line total is named separately ("log lines"), never
+  // mixed in as if it were a finding count.
   const cells: { label: string; value: string; tone?: string }[] = [
-    { label: "errors", value: formatValue(errorTotal, null), tone: errorTotal ? LEVEL_TEXT.critical : "" },
+    { label: "critical", value: String(findingCounts.critical), tone: findingCounts.critical ? LEVEL_TEXT.critical : "" },
     { label: "warnings", value: String(findingCounts.warn), tone: findingCounts.warn ? LEVEL_TEXT.warn : "" },
     { label: "low", value: String(findingCounts.low), tone: findingCounts.low ? LEVEL_TEXT.low : "" },
-    { label: "clean", value: String(report.counts.ok), tone: report.counts.ok ? LEVEL_TEXT.ok : "" },
+    { label: "log lines", value: formatValue(errorTotal, null), tone: "" },
+    { label: "healthy", value: String(report.counts.ok), tone: report.counts.ok ? LEVEL_TEXT.ok : "" },
   ]
   return (
     <Card className="flex-row flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
@@ -105,10 +105,9 @@ export function StatStrip({
   )
 }
 
-/** Overview is a landing screen, not a report: the worst few findings, then
- *  everything else behind a collapsed row. Nothing here is unique to this
- *  tab — the severity tabs hold the full lists — so keeping it to one screen
- *  costs no information. */
+/** The estate strip, one card per project, and anything the sweep could not
+ *  check. Nothing here is unique to this tab — the severity tabs hold the
+ *  full lists — so keeping it to one screen costs no information. */
 export function OverviewTab({
   report,
   projects,

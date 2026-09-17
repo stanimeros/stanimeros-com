@@ -1,7 +1,7 @@
-// The small shared pieces every tab is built from: a status icon, a stat
-// tile, a collapsed section, and the finding row itself. Nothing here knows
-// about a tab or a project list — if a component needs to, it belongs in
-// projects.tsx or one of the tab files instead.
+// The small shared pieces every tab is built from: status icon, expand arrow,
+// stat tile, collapsed section, copy button, cost summary, and the findings
+// table. Nothing here knows about a tab or a project list — if a component
+// needs to, it belongs in projects.tsx or one of the tab files instead.
 
 import { Fragment, useState } from "react"
 import type { ReactNode } from "react"
@@ -146,7 +146,7 @@ export function CostSummary({ cost, limit = 5 }: { cost: CostBreakdown; limit?: 
   return (
     <div className="text-sm">
       <div className="mb-1 text-xs text-muted-foreground">
-        24h {formatMoney(cost.last24h, cost.currency)} · 7d {formatMoney(cost.last7d, cost.currency)} · 30d{" "}
+        Today {formatMoney(cost.last24h, cost.currency)} · 7d {formatMoney(cost.last7d, cost.currency)} · 30d{" "}
         {formatMoney(cost.last30d, cost.currency)}
         {cost.prev30d ? ` (prev ${formatMoney(cost.prev30d, cost.currency)})` : ""}
       </div>
@@ -285,7 +285,7 @@ export function FindingsTable({
                 {/* Always mounted (not `expanded && <tr>`), collapsed to zero
                     height via grid-rows -- that's what actually makes the
                     reveal animate instead of popping in, same trick as
-                    ProjectRow's drill-down below. */}
+                    ProjectCard's drill-down in projects.tsx. */}
                 <tr>
                   <td colSpan={columnCount} className="p-0">
                     <div

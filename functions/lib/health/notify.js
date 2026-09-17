@@ -50,7 +50,10 @@ function subjectFor(report, keys) {
     .filter((p) => p.findings.some((f) => keys.includes(f.key)))
     .map((p) => p.name);
   const scope = worst.length === 1 ? worst[0] : `${worst.length} projects`;
-  const level = report.status === "critical" ? "CRITICAL" : "Warning";
+  // The worst of the NEW findings, not of the whole estate. Keying off
+  // report.status mailed "[CRITICAL]" for a single new warn whenever some
+  // unrelated project happened to already be critical.
+  const level = keys.some((key) => levelOf(report, key) === "critical") ? "CRITICAL" : "Warning";
   return `[${level}] ${scope} — ${keys.length} new finding${keys.length === 1 ? "" : "s"}`;
 }
 
@@ -64,8 +67,10 @@ function renderEmail(report, keys, dashboardUrl) {
   const parts = [
     `<h2 style="margin:0 0 4px">System health — ${keys.length} new finding${keys.length === 1 ? "" : "s"}</h2>`,
     `<p style="margin:0 0 16px;color:#666;font-size:13px">`,
-    `${escapeHtml(report.generated)} · ${report.counts.critical} critical, ${report.counts.warn} warning, `,
-    `${report.counts.ok} clean of ${report.counts.total}</p>`,
+    // Explicitly "projects": these are project counts sitting directly under
+    // a finding count, which read as more findings.
+    `${escapeHtml(report.generated)} · ${report.counts.total} projects — ${report.counts.critical} critical, `,
+    `${report.counts.warn} warnings, ${report.counts.low} low, ${report.counts.ok} healthy</p>`,
   ];
 
   for (const project of affected) {
@@ -87,7 +92,7 @@ function renderEmail(report, keys, dashboardUrl) {
 
     if (project.errorTruncated) {
       parts.push(
-        `<p style="margin:6px 0;color:#b45309;font-size:13px">Error log hit the 1000-entry cap — the real count is higher.</p>`
+        `<p style="margin:6px 0;color:#b45309;font-size:13px">Error log hit the 1,000-entry cap — the real count is higher.</p>`
       );
     }
   }

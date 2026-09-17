@@ -107,7 +107,7 @@ export default function Health() {
   const [seen, setSeen] = useState<{ lastViewedRunId: string | null; lastViewedAt: string | null } | null>(null)
   const [viewingRunId, setViewingRunId] = useState<string | null>(null)
 
-  // 4.4 — one filter row's state, linkable via the URL hash.
+  // One filter row's state, linkable via the URL hash.
   const hashState = useHashState()
   const [tab, setTabState] = useState("overview")
   const [projectFilter, setProjectFilterState] = useState("")
@@ -116,7 +116,7 @@ export default function Health() {
   useEffect(() => {
     if (!hashState.ready || hashInitialized.current) return
     hashInitialized.current = true
-    // A stale link (#tab=projects, from before the severity tabs) must not
+    // A stale link (#tab=cards, from before the severity tabs) must not
     // select a tab that no longer exists and render nothing.
     if (hashState.params.tab && TAB_VALUES.includes(hashState.params.tab)) setTabState(hashState.params.tab)
     if (hashState.params.project) setProjectFilterState(hashState.params.project)
@@ -137,7 +137,7 @@ export default function Health() {
     [hashState]
   )
 
-  // 5.4 — light/dark is a toggle, default light, remembered per viewer.
+  // Light/dark is a toggle, default light, remembered per viewer.
   const [theme, setThemeState] = useState<"light" | "dark">("light")
 
   useEffect(() => {
@@ -261,8 +261,8 @@ export default function Health() {
   const chronological = useMemo(() => [...history].reverse(), [history])
 
   /** New *since you last looked*, not since the previous run — being away for
-   *  a day must not roll the window past (plan.md §1.4). Falls back to the
-   *  run's own diff when there is no marker yet. */
+   *  a day must not roll the window past. Falls back to the run's own diff
+   *  when there is no marker yet. */
   const isNew = useCallback(
     (key: string) => {
       const life = lifecycle.get(key)
@@ -275,7 +275,9 @@ export default function Health() {
   const sinceLast = useMemo(() => {
     if (!seen?.lastViewedAt) return null
     const newCount = findings.filter((f) => f.firstSeen > seen.lastViewedAt!).length
-    const stillOpen = findings.filter((f) => f.state === "open" || f.state === "acked").length
+    // Open only. Suppressed findings are counted nowhere else on the page, so
+    // including them here made "still open" disagree with every other number.
+    const stillOpen = findings.filter((f) => f.state === "open").length
     return { newCount, stillOpen, at: seen.lastViewedAt }
   }, [findings, seen])
 
@@ -366,7 +368,7 @@ export default function Health() {
               variant="outline"
               onClick={runNow}
               disabled={busy || loadingReport}
-              title="Full sweep. Sends no email and doesn't change what the next scheduled run will alert on."
+              title="Full sweep. No email, and the next scheduled alert is unaffected."
             >
               <RefreshCw className={busy ? "animate-spin" : ""} aria-hidden="true" />
               {busy ? "Running…" : "Run now"}
@@ -406,7 +408,7 @@ export default function Health() {
           </div>
         )}
 
-        {/* C1 — the run history as a band. Click a cell to open that run. */}
+        {/* The run history as a band. Click a cell to open that run. */}
         {chronological.length > 1 && (
           <div className="space-y-1">
             <StatusBand
@@ -442,7 +444,7 @@ export default function Health() {
               · <span className="font-mono font-medium">{sinceLast.stillOpen}</span> still open
             </span>
             <Button variant="ghost" size="sm" onClick={markSeen}>
-              Mark all as seen
+              Mark as seen
             </Button>
           </Card>
         )}
@@ -450,19 +452,18 @@ export default function Health() {
         {report && (
           <Tabs value={tab} onValueChange={setTab} className="space-y-4">
             {/* One tab per severity, which is how the dashboard is actually
-                read ("what's broken, what's odd, what's noise") — the old
-                Projects/Errors split was the same findings cut two ways. */}
+                read: what's broken, what's odd, what's noise. */}
             <TabsList className="grid w-full grid-cols-6 bg-muted sm:flex">
               <TabsTrigger value="overview" className="sm:flex-1">
                 <LayoutDashboard className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Overview</span>
               </TabsTrigger>
               {SEVERITY_TABS.map(({ value, level, label, icon: Icon }) => {
-                // The Errors badge is the actual (raw) Cloud Logging error
-                // count, not a count of critical findings — same definition
-                // used on Overview. Warnings/low have no raw-log equivalent,
-                // so those stay finding counts.
-                const badgeCount = level === "critical" ? errorTotal : findingCounts[level]
+                // Findings, for every level. The critical badge used to show
+                // the raw Cloud Logging line count instead, which could put a
+                // badge of 40 on a tab whose own empty state read "nothing
+                // critical" — the two numbers are unrelated.
+                const badgeCount = findingCounts[level]
                 return (
                   <TabsTrigger key={value} value={value} className="sm:flex-1">
                     <Icon className={`size-4 ${LEVEL_TEXT[level]}`} aria-hidden="true" />

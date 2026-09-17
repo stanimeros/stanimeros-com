@@ -25,8 +25,8 @@ export function CostTab({ report, projects }: { report: Report; projects: Projec
       </span>
       <span className="text-muted-foreground">
         {report.costDataThrough
-          ? `The billing export has nothing newer than ${report.costDataThrough} — every figure below stops there and is missing whatever happened since.`
-          : "The billing export could not be read at all, so no cost figure here can be trusted."}
+          ? `Figures stop at ${report.costDataThrough}; anything since is missing.`
+          : "The billing export could not be read, so no figure here can be trusted."}
       </span>
     </Card>
   ) : null
@@ -49,7 +49,10 @@ export function CostTab({ report, projects }: { report: Report; projects: Projec
           icon={CircleDollarSign}
         />
         <Tile
-          label="24h"
+          // "Today", not "24h": billing.js sums whole UTC-day buckets newer
+          // than now-24h, which only ever selects today's — at midday that is
+          // 12 hours of spend, not 24.
+          label="Today"
           // No project with cost data at all means "nothing to sum", not
           // "zero spend" — matching Total's "—" rather than a misleading
           // €0.00 for the same underlying reason.
@@ -63,7 +66,7 @@ export function CostTab({ report, projects }: { report: Report; projects: Projec
       </div>
 
       <Card className="px-4 py-3">
-        <div className="mb-2 text-sm font-medium">Cost by project · 30d</div>
+        <div className="mb-2 text-sm font-medium">Cost by project · {report.costWindowDays}d</div>
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground">No cost data available.</p>
         ) : (

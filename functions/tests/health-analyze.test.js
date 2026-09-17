@@ -438,6 +438,118 @@ test("log errors escalate to critical at cfg.criticalErrors", () => {
   assert.equal(finding.level, "critical");
 });
 
+test("a classified log line takes its level from LEVEL_BY_KIND, not from the raw count", () => {
+  // With criticalErrors = 1 the count rule marks every signature critical (a
+  // signature only exists if it happened at least once), which overrode the
+  // deliberate severity in LEVEL_BY_KIND -- an API-key hygiene notice showed
+  // up as a critical error and as a `low` finding in the same report.
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 4,
+        truncated: false,
+        kinds: { api_key_warning: 4 },
+        sources: {},
+        top: [{ source: "api", message: "Unable to update key restrictions", count: 4 }],
+      },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "api_key_warning");
+  assert.ok(finding);
+  assert.equal(finding.level, LEVEL_BY_KIND.api_key_warning);
+  assert.equal(finding.level, "low");
+});
+
+test("a kind already shown with its real message is not rolled up a second time", () => {
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 2,
+        truncated: false,
+        kinds: { missing_index: 2 },
+        sources: {},
+        top: [{ source: "run:gethealthreport", message: "The query requires an index", count: 2 }],
+      },
+    })
+  );
+  const indexFindings = result.findings.filter((f) => f.kind === "missing_index");
+  assert.equal(indexFindings.length, 1, "one problem, one row");
+  // The row that survives is the one carrying the actual message, not the
+  // "missing index in the last 48h" rollup that drops it.
+  assert.match(indexFindings[0].text, /The query requires an index/);
+  assert.equal(indexFindings[0].level, LEVEL_BY_KIND.missing_index);
+});
+
+test("a quiet kind that missed the top-ten signatures still gets its rollup row", () => {
+  // log.top holds only the ten commonest signatures, so the rollup is the
+  // safety net that keeps a rare-but-serious kind from vanishing entirely.
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 5,
+        truncated: false,
+        kinds: { billing: 1 },
+        sources: {},
+        top: [{ source: "function:x", message: "boom", count: 5 }],
+      },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "billing");
+  assert.ok(finding, "a kind with no signature in log.top must still report");
+  assert.equal(finding.level, "critical");
+});
+
+test("a crash-shaped error is named and critical rather than anonymous `errors` text", () => {
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 3,
+        truncated: false,
+        kinds: { out_of_memory: 3 },
+        sources: {},
+        top: [{ source: "run:gethealthreport", message: "Memory limit of # MiB exceeded", count: 3 }],
+      },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "out_of_memory");
+  assert.ok(finding, "out_of_memory was classified but graded nowhere, so it never surfaced");
+  assert.equal(finding.level, "critical");
+  assert.match(finding.text, /Memory limit/);
+});
+
+test("an unreadable entry is a warning, not a critical finding whose text is the word ERROR", () => {
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 1,
+        truncated: false,
+        kinds: { unreadable: 1 },
+        sources: {},
+        top: [{ source: "scheduler", message: "(no readable message)", count: 1 }],
+      },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "unreadable");
+  assert.ok(finding, "it still reports -- something logged an error");
+  assert.equal(finding.level, "warn", "but nothing in the entry supports calling it critical");
+});
+
+test("an unclassified error still follows the count rule -- the case that rule was written for", () => {
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 1,
+        truncated: false,
+        kinds: {},
+        sources: {},
+        top: [{ source: "function:x", message: "something nobody has a pattern for", count: 1 }],
+      },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "errors");
+  assert.equal(finding.level, "critical");
+});
+
 test("log.count: null (log read failed) produces no errors finding -- must not read as zero errors", () => {
   const result = analyzeProject(
     baseArgs({ log: { count: null, truncated: false, kinds: {}, sources: {}, top: [] } })
@@ -581,7 +693,8 @@ test("analyzeIam flags a custom service account bound to roles/owner or roles/ed
   assert.ok(finding, "expected a broad-role finding");
   assert.equal(finding.key, "proj:broad-role:sa@proj.iam.gserviceaccount.com:roles/editor");
   assert.equal(finding.level, "low");
-  assert.match(finding.text, /custom account/);
+  // A custom account reads plainly: no "(GCP default agent)" qualifier.
+  assert.equal(finding.text, "sa@proj.iam.gserviceaccount.com holds roles/editor");
 });
 
 test("analyzeIam flags GCP's own default agent holding a broad role as low too, with different text", () => {
@@ -593,7 +706,7 @@ test("analyzeIam flags GCP's own default agent holding a broad role as low too, 
   const result = analyzeProject(baseArgs({ iam }));
   const finding = result.findings.find((f) => f.kind === "broad-role");
   assert.equal(finding.level, "low");
-  assert.match(finding.text, /default account/);
+  assert.match(finding.text, /\(GCP default agent\)/);
 });
 
 test("analyzeIam flags an unrestricted API key as low", () => {

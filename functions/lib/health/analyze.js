@@ -6,7 +6,7 @@
 
 const { FAILURE_LABELS, LEVEL_ORDER, LEVEL_BY_KIND, LIMITS, failureThresholdsFor } = require("./config");
 const { dropRunShadows } = require("./monitoring");
-const { ALWAYS_REPORT } = require("./logging");
+const { ALWAYS_REPORT, classify } = require("./logging");
 
 // Median, not mean: one bad day shouldn't raise the bar and hide the next one.
 function median(values) {
@@ -133,7 +133,9 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
         key: findingKey(projectId, "stall", spec.key),
         level: LEVEL_BY_KIND.stall,
         kind: "stall",
-        text: `${spec.key} dropped to zero over the last 24h (baseline ${formatValue(baseline, unit)}) — possible outage`,
+        // No "possible outage" suffix: the kind is already called `stall`,
+        // and the guess is the reader's to make.
+        text: `${spec.key} zero over the last 24h (baseline ${formatValue(baseline, unit)})`,
       });
     }
 
@@ -158,7 +160,7 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
           key: findingKey(projectId, "quota", spec.key),
           level: used >= 1 ? "critical" : "warn",
           kind: "quota",
-          text: `${spec.key} at ${Math.round(used * 100)}% of the free daily allowance over the last 24h (${formatValue(latest, unit)} / ${formatValue(spec.freeDaily, unit)})`,
+          text: `${spec.key} at ${Math.round(used * 100)}% of the Spark daily allowance (${formatValue(latest, unit)} / ${formatValue(spec.freeDaily, unit)})`,
         });
       }
     }
@@ -308,7 +310,10 @@ function analyzeIam(projectId, iam, cfg, findings) {
         key: findingKey(projectId, "sa-key", `${sa.email}:${key.name}`),
         level: LEVEL_BY_KIND["sa-key"],
         kind: "sa-key",
-        text: `${sa.email} has a downloadable key${ageText} — rotate to keyless auth (ADC/workload identity) if possible`,
+        // The remedy ("rotate to keyless auth") used to trail every one of
+        // these. Identical on every row, it only pushed the account name out
+        // of a truncating column.
+        text: `${sa.email}: downloadable key${ageText}`,
       });
     }
   }
@@ -319,8 +324,8 @@ function analyzeIam(projectId, iam, cfg, findings) {
     // Worth a different text either way (see iam.js's DEFAULT_AGENT_RE
     // comment), just not a different severity.
     const text = binding.isDefaultAgent
-      ? `${binding.email} — GCP's default account for this project — still holds ${binding.role}; narrowing it is optional but a well-known best practice`
-      : `${binding.email} holds ${binding.role} on the project — this looks like a custom account with full project access, worth reviewing`;
+      ? `${binding.email} holds ${binding.role} (GCP default agent)`
+      : `${binding.email} holds ${binding.role}`;
     findings.push({
       key: findingKey(projectId, "broad-role", `${binding.email}:${binding.role}`),
       level: LEVEL_BY_KIND["broad-role"],
@@ -334,7 +339,7 @@ function analyzeIam(projectId, iam, cfg, findings) {
       key: findingKey(projectId, "api-key", apiKey.name),
       level: LEVEL_BY_KIND["api-key"],
       kind: "api-key",
-      text: `API key "${apiKey.displayName || apiKey.name}" has no restrictions — anyone who gets it can use it from anywhere`,
+      text: `API key "${apiKey.displayName || apiKey.name}" is unrestricted`,
     });
   }
 }
@@ -353,11 +358,29 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
   // stays the same open finding across runs instead of reopening every
   // sweep, and lifecycle (first/last seen, ack) tracks the specific error
   // instead of the estate's error volume in general.
+  // Which classified kinds already have a row of their own below, so the
+  // rollup loop can avoid describing the same log lines a second time.
+  const covered = new Set();
+
   for (const top of log.top || []) {
+    const kind = classify(top.message);
+    // classify()'s verdict outranks the raw count. LEVEL_BY_KIND is where
+    // this estate decides what an API-key notice or a missing index is
+    // actually worth; grading the same line critical here purely because it
+    // occurred once contradicted that, and with criticalErrors = 1 it did so
+    // for *every* line -- a signature only exists if it happened at least
+    // once, which made the `warn` half of the old ternary unreachable. The
+    // count rule still applies to genuinely unclassified errors ("other"),
+    // which is the case it was written for.
+    const level = LEVEL_BY_KIND[kind] || (top.count >= cfg.criticalErrors ? "critical" : "warn");
+    covered.add(kind);
     findings.push({
       key: findingKey(projectId, "errors", `${top.source}:${top.message}`),
-      level: top.count >= cfg.criticalErrors ? "critical" : "warn",
-      kind: "errors",
+      level,
+      // Name what it is when we know ("out_of_memory", "rules_denied"), not a
+      // flat "errors" for all sixteen rows -- classify() already worked this
+      // out and the Kind column is the first thing scanned.
+      kind: kind === "other" ? "errors" : kind,
       text: `${top.source}: ${top.message}`,
       // Carried as its own field (not just baked into text) so the UI can
       // render it as a fixed, never-truncated badge instead of a suffix that
@@ -369,8 +392,14 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
   // These are quiet and each has one specific fix, so they report however
   // few. Severity is a flat lookup for all of them (LEVEL_BY_KIND) -- unlike
   // errors/volume above, none of these kinds graduate by count.
+  //
+  // A safety net rather than a parallel report: `log.top` only holds the ten
+  // commonest signatures, so a quiet kind can miss it entirely, but when a
+  // kind IS up there its row carries the real message -- strictly more useful
+  // than this one's "<kind> in the last 48h". Emitting both is what put the
+  // same missing index on the dashboard twice, critical here and warn there.
   for (const [kind, count] of Object.entries(log.kinds || {})) {
-    if (!ALWAYS_REPORT.has(kind)) continue;
+    if (!ALWAYS_REPORT.has(kind) || covered.has(kind)) continue;
     findings.push({
       key: findingKey(projectId, kind, "log"),
       level: LEVEL_BY_KIND[kind],
@@ -378,7 +407,10 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
       // Count used to lead this sentence ("5x missing index..."); now it's
       // its own badge in the UI (see Finding.count), so the text doesn't
       // need to repeat it.
-      text: `${kind.replace(/_/g, " ")} in the last ${logHours}h`,
+      // The kind is already its own column, so repeating it de-underscored
+      // said nothing. This row exists precisely because no example message
+      // made the top ten -- say that.
+      text: `${count}× in the last ${logHours}h, no example captured`,
       count,
     });
   }

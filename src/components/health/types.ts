@@ -37,9 +37,9 @@ export interface Finding {
   level: Exclude<Level, "ok">
   kind: string
   text: string
-  /** Set only when a finding is rendered outside its own project's card
-   *  (e.g. the estate-wide tier groups on Overview) so the row can name
-   *  which project it belongs to. */
+  /** Set by SeverityTab, whose lists are estate-wide, so a row can name the
+   *  project it belongs to. Absent wherever the project is already the
+   *  surrounding context. */
   projectName?: string
   /** How many times this exact thing happened in the window -- only set for
    *  kinds where that's a real, distinct number (log-derived `errors` and

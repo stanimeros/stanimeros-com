@@ -30,7 +30,7 @@ export function ProjectCard({ project }: { project: ProjectResult }) {
               <StatusIcon level={project.status} />
               <span className="font-semibold">{project.name}</span>
               <span className="font-mono text-xs text-muted-foreground">{project.project}</span>
-              {/* Plan isn't a severity signal — no chroma, mockup decision 1. */}
+              {/* Plan isn't a severity signal — no chroma. */}
               <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                 {project.plan}
               </span>
@@ -67,8 +67,7 @@ export function ProjectCard({ project }: { project: ProjectResult }) {
                         </span>
                       </div>
                     </div>
-                    {/* C9 — the same series the old sparkline drew, but with
-                        the baseline marked and the dates readable. */}
+                    {/* Baseline marked, dates readable on hover/focus. */}
                     <Series
                       variant="spark"
                       points={metric.history.map((value, i) => ({ day: metric.days[i] ?? String(i), value }))}

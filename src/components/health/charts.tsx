@@ -1,7 +1,7 @@
 /**
- * Reusable chart primitives for the Health dashboard (plan.md, "Chart
- * layer"). Inline SVG and flex/grid divs only — no chart library, no new
- * dependency.
+ * The dashboard's two charts: `StatusBand` (severity over runs) and `Series`
+ * (one metric over time). Inline SVG and flex/grid divs only — no chart
+ * library, no new dependency.
  *
  * The one law every primitive here follows: color means severity and
  * nothing else. `StatusBand` uses the reserved status colors because it *is*
@@ -12,9 +12,9 @@
  * component here references a role (`var(--hc-critical)`, `var(--hc-seq-6)`,
  * ...), never a raw hex.
  *
- * Interaction rules applied throughout (plan.md, "Interaction rules for all
- * nine"): hover enhances and never gates — every value drawn is also either
- * a direct label, a native `title`, or an `aria-label`; keyboard focus shows
+ * Interaction rules applied throughout: hover enhances and never gates —
+ * every value drawn is also either a direct label, a native `title`, or an
+ * `aria-label`; keyboard focus shows
  * the same thing hover shows; hit targets are padded to ~24px even when the
  * mark itself is a couple of pixels wide; no chart animates on mount; grid/
  * axis strokes are hairline and solid, the sole exception being the dashed
@@ -41,7 +41,7 @@ function MarkTooltip({ groupName, text }: { groupName: string; text: string }) {
 }
 
 /* ------------------------------------------------------------------ */
-/* C1 — StatusBand                                                     */
+/* StatusBand — severity across runs                                   */
 /* ------------------------------------------------------------------ */
 
 export interface StatusBandRun {
@@ -68,7 +68,7 @@ function bandBackground(run: StatusBandRun): string {
   if (segments.length === 1) return HEALTH_STATUS_VAR[segments[0].level]
 
   // Top to bottom, worst first — a vertical stack reads as a tiny bar chart
-  // rather than a smear, and matches how Columns/StackedBar stack elsewhere.
+  // rather than a smear.
   let pos = 0
   const stops: string[] = []
   for (const seg of segments) {
@@ -121,7 +121,8 @@ export function StatusBand({
       {runs.map((run) => {
         const exact = new Date(run.generated).toLocaleString()
         const countsText = run.counts
-          ? ` · ${run.counts.critical ?? 0} critical, ${run.counts.warn ?? 0} warn, ${run.counts.low ?? 0} low, ${run.counts.ok ?? 0} ok`
+          // The page's words, not the internal level names (warn/ok).
+          ? ` · ${run.counts.critical ?? 0} critical, ${run.counts.warn ?? 0} warnings, ${run.counts.low ?? 0} low, ${run.counts.ok ?? 0} healthy`
           : ""
         const label = `${LEVEL_LABEL[run.status]} · ${exact}${countsText}`
         return (
@@ -145,7 +146,7 @@ export function StatusBand({
 }
 
 /* ------------------------------------------------------------------ */
-/* C4 / C9 — Series                                                     */
+/* Series — one metric over time                                        */
 /* ------------------------------------------------------------------ */
 
 export interface SeriesPoint {
@@ -154,8 +155,8 @@ export interface SeriesPoint {
 }
 
 /**
- * Line + area chart (variant "full", C4) or a compact axis-less sparkline
- * (variant "spark", C9). Monochrome sequential fill, dashed baseline rule,
+ * Line + area chart (variant "full") or a compact axis-less sparkline
+ * (variant "spark"). Monochrome sequential fill, dashed baseline rule,
  * hover readout keyed to `point.day` (i.e. `metric.days`). Points are also
  * individually focusable so keyboard users get the same readout hover
  * gives, and the last point's value is direct-labeled so the chart isn't

@@ -101,14 +101,15 @@ const DEFAULTS = {
   spikeFloor: 100,      // ...and is at least this many units, so tiny numbers stay quiet
   quietFraction: 0.2,   // ...or 20% of a metric's freeDaily, if that's higher (e.g. 10k Firestore reads)
   errorFloor: 10,       // errors/window below this are never flagged on their own
-  // An error is an error: any ERROR-severity log entry in the window makes
-  // the project red, not amber. This was 100, which meant a project with 8
-  // real errors rendered the same amber as an unrestricted API key -- two
-  // very different things wearing one colour. The scale stays here rather
-  // than being hard-coded in analyze.js so a project that legitimately logs
-  // routine errors can raise its own bar in OVERRIDES instead of the whole
-  // estate losing the distinction.
-  criticalErrors: 1,    // errors/window at or above this are critical
+  // Applies ONLY to a log line no pattern in ERROR_KINDS recognised. Anything
+  // classify() can name takes its severity from LEVEL_BY_KIND instead, so a
+  // credential-hygiene notice is no longer critical merely for having
+  // occurred. At 1 this rule is "any unrecognised error is critical" -- which
+  // is the intent (an unknown error is red, not amber), but it is also why it
+  // must not be the rule for classified kinds: every signature has count >= 1,
+  // so applied to everything it made the whole estate critical. A project that
+  // legitimately logs routine errors can raise its own bar in OVERRIDES.
+  criticalErrors: 1,    // unclassified errors/window at or above this are critical
   freeTierWarn: 0.8,    // warn at 80% of a Spark daily allowance
   baselineDays: 14,
   logHours: 48,
@@ -155,9 +156,25 @@ const LEVEL_BY_KIND = {
   quota_exhausted: "critical",
   billing: "critical",
   deploy_failure: "critical",
+  // Crash-shaped: something ran and died. These were classified by logging.js
+  // but graded nowhere, so they fell through to the raw count rule and were
+  // only ever critical by accident -- they are critical on purpose now.
+  out_of_memory: "critical",
+  function_crash: "critical",
+  function_timeout: "critical",
 
   // something is off, but nothing is currently failing
   stall: "warn",
+  // A denied call is a misconfiguration to fix, not something on fire -- and
+  // it is by far the commonest ERROR-severity line in an audit log.
+  unauthenticated: "warn",
+  // An entry whose message we could not read (see logging.js's NO_MESSAGE).
+  // Worth showing -- something logged an error -- but calling it critical
+  // asserts a severity nothing in the entry actually supports.
+  unreadable: "warn",
+  // A known-benign notice a Google service happens to log at ERROR severity.
+  // Nothing failed, so it belongs with the hygiene tier, not with failures.
+  advisory: "low",
   "function silent": "warn",
   "run silent": "warn",
   "function spike": "warn",
@@ -176,9 +193,9 @@ const LEVEL_BY_KIND = {
   "broad-role": "low",
 };
 
-// Per-project threshold overrides, merged over DEFAULTS. Phase 1 of the plan
-// fills this in: a project that is legitimately spiky gets its floor or ratio
-// raised here rather than having every run mail about it.
+// Per-project threshold overrides, merged over DEFAULTS: a project that is
+// legitimately spiky gets its floor or ratio raised here rather than having
+// every run mail about it.
 const OVERRIDES = {
   // Near-idle project: most of the 14-day window has no traffic at all, so a
   // single real day of use reads as an infinite ratio against a baseline of 1.
