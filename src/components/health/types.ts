@@ -45,6 +45,13 @@ export interface Finding {
    *  kinds where that's a real, distinct number (log-derived `errors` and
    *  the ALWAYS_REPORT kinds in logging.js), not implied by every kind. */
   count?: number
+  /** The actual timestamp of the newest log line behind this finding --
+   *  only set for the log-derived `errors` kind, where `analyze.js` can name
+   *  one (see logging.js's readErrors). Distinct from (and more useful than)
+   *  the lifecycle's lastSeen, which only has run-level (thrice-a-day)
+   *  granularity and reads as "still happening right now" for something
+   *  that last actually fired hours ago within the same log window. */
+  lastOccurred?: string
 }
 
 export interface Metric {

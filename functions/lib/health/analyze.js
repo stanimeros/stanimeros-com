@@ -399,6 +399,11 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
       // render it as a fixed, never-truncated badge instead of a suffix that
       // gets clipped along with the rest of a long message.
       count: top.count,
+      // The actual most recent log line for this signature -- distinct from
+      // (and more useful than) the lifecycle's lastSeen, which only has
+      // run-level granularity and reads as "still happening right now" for
+      // something that last fired hours ago within the same window.
+      ...(top.lastOccurred ? { lastOccurred: top.lastOccurred } : {}),
     });
   }
 

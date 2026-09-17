@@ -75,6 +75,15 @@ chronologically and is unique per run.
                                              // recognises the message; "errors" is
                                              // the fallback for an unclassified one.
       "text":  "firestore.reads 804 vs baseline 4 (201.0x)",
+      "count": 4,                            // times this exact thing happened in the window --
+                                              // only set for log-derived `errors` and the
+                                              // ALWAYS_REPORT kinds (logging.js); absent elsewhere.
+      "lastOccurred": "2026-09-17T13:21:41Z", // the newest log line behind an `errors` finding --
+                                              // only set when logging.js's readErrors could name
+                                              // one (see its `top[].lastOccurred`); absent, not
+                                              // null, on every other kind. More useful than the
+                                              // health_findings lifecycle's own lastSeen, which
+                                              // only has run-level (thrice-a-day) granularity.
       "deployedAt": "2026-09-15T10:02:00Z"    // present ONLY on function/run-shaped kinds
                                               // (function|run errors/silent/spike) whose entity
                                               // has a known deploy time -- absent, not null, on

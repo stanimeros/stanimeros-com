@@ -112,7 +112,11 @@ const DEFAULTS = {
   criticalErrors: 1,    // unclassified errors/window at or above this are critical
   freeTierWarn: 0.8,    // warn at 80% of a Spark daily allowance
   baselineDays: 14,
-  logHours: 48,
+  // A finding no longer needs to survive on the strength of this window
+  // alone -- lifecycle.js persists it across runs (open until confirmed
+  // cleared, deleted and recreated fresh if it comes back), so 48h of
+  // padding against a missed run is no longer the safety net it used to be.
+  logHours: 24,
 };
 
 // Project-level roles that turn a leaked service-account key into full

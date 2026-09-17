@@ -239,6 +239,10 @@ async function readErrors(projectId, hours, token) {
   const entries = Array.isArray(payload.entries) ? payload.entries : [];
 
   const tally = new Map(); // "source signature" -> count
+  // Cloud Logging returns entries newest-first (orderBy: "timestamp desc"
+  // above), so the first entry seen for a given key is already its most
+  // recent occurrence -- no need to compare timestamps, just keep the first.
+  const lastOccurred = new Map(); // "source signature" -> ISO timestamp of its newest occurrence
   const kinds = {};
   const sources = {};
   let kept = 0;
@@ -253,6 +257,7 @@ async function readErrors(projectId, hours, token) {
     kept += 1;
     const key = `${source} ${sig}`;
     tally.set(key, (tally.get(key) || 0) + 1);
+    if (!lastOccurred.has(key) && entry.timestamp) lastOccurred.set(key, entry.timestamp);
     kinds[kind] = (kinds[kind] || 0) + 1;
     sources[source] = (sources[source] || 0) + 1;
   }
@@ -265,7 +270,16 @@ async function readErrors(projectId, hours, token) {
     .slice(0, 10)
     .map(([key, count]) => {
       const sep = key.indexOf(" ");
-      return { source: key.slice(0, sep), message: key.slice(sep + 1), count };
+      return {
+        source: key.slice(0, sep),
+        message: key.slice(sep + 1),
+        count,
+        // The actual most recent log line, not the sweep run that reported it
+        // -- lifecycle.js's lastSeen only has run-level (thrice-a-day)
+        // granularity, which reads as "still happening right now" for
+        // something that last fired hours ago within the same window.
+        lastOccurred: lastOccurred.get(key) || null,
+      };
     });
 
   return { count: kept, truncated, kinds, sources, top };

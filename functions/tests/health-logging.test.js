@@ -190,6 +190,41 @@ test("a self-audit denial is dropped from errorCount too, not just from the list
   assert.equal(result.sources.project, undefined);
 });
 
+test("top carries lastOccurred as the newest entry's own timestamp, not the sweep's read time", async () => {
+  // entries:list is requested newest-first (orderBy: "timestamp desc"), so
+  // the first of two same-signature entries here is the more recent one.
+  const entries = [
+    { resource: { type: "cloud_function", labels: { function_name: "doThing" } }, textPayload: "boom", timestamp: "2026-09-17T13:21:41Z" },
+    { resource: { type: "cloud_function", labels: { function_name: "doThing" } }, textPayload: "boom", timestamp: "2026-09-17T12:54:32Z" },
+  ];
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ entries }) });
+  let result;
+  try {
+    result = await readErrors("proj", 24, "token");
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  assert.equal(result.top.length, 1);
+  assert.equal(result.top[0].count, 2);
+  assert.equal(result.top[0].lastOccurred, "2026-09-17T13:21:41Z");
+});
+
+test("top's lastOccurred is null when an entry carries no timestamp", async () => {
+  const entries = [{ resource: { type: "cloud_function", labels: { function_name: "doThing" } }, textPayload: "boom" }];
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ entries }) });
+  let result;
+  try {
+    result = await readErrors("proj", 24, "token");
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  assert.equal(result.top[0].lastOccurred, null);
+});
+
 // The sweep runs its BigQuery billing queries from the same project it
 // monitors, so a failed query used to come back as an ERROR entry in that
 // project's own log feed -- and with criticalErrors = 1, painted the host

@@ -292,9 +292,22 @@ export function FindingsTable({
                             // One line, not a label/value grid -- state is
                             // already shown by the resolve control right
                             // below, so it doesn't need its own row here too.
+                            // "Last occurred" (the actual newest log line,
+                            // when analyze.js could name one) leads over the
+                            // sweep's own lastSeen -- lastSeen only has
+                            // run-level granularity and reads as "still
+                            // happening right now" for something that
+                            // actually last fired hours ago in the same
+                            // window. runsSeen isn't shown at all: the ×N
+                            // badge on the row already says how often, so
+                            // "how many sweeps noticed it" added nothing.
                             <p className="text-xs text-muted-foreground">
-                              Open for {duration(life.firstSeen)} · first seen {exactTime(life.firstSeen)} · last seen{" "}
-                              {exactTime(life.lastSeen)} · seen in {life.runsSeen} run{life.runsSeen === 1 ? "" : "s"}
+                              Open for {duration(life.firstSeen)} · first seen {exactTime(life.firstSeen)} ·{" "}
+                              {finding.lastOccurred ? (
+                                <>last occurred {exactTime(finding.lastOccurred)}</>
+                              ) : (
+                                <>last seen {exactTime(life.lastSeen)}</>
+                              )}
                               {life.ackedUntil && <> · resolved until {exactTime(life.ackedUntil)}</>}
                             </p>
                           ) : (

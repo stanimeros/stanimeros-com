@@ -402,6 +402,38 @@ test("a single real error log entry is critical -- no floor, unlike the Monitori
   assert.equal(result.status, "critical");
 });
 
+test("an errors finding carries lastOccurred from log.top when logging.js found one", () => {
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 1,
+        truncated: false,
+        kinds: {},
+        sources: { "function:x": 1 },
+        top: [{ source: "function:x", message: "boom", count: 4, lastOccurred: "2026-09-17T13:21:41Z" }],
+      },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "errors");
+  assert.equal(finding.lastOccurred, "2026-09-17T13:21:41Z");
+});
+
+test("an errors finding carries no lastOccurred field at all when log.top has none -- not a null placeholder", () => {
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 1,
+        truncated: false,
+        kinds: {},
+        sources: { "function:x": 1 },
+        top: [{ source: "function:x", message: "boom", count: 1, lastOccurred: null }],
+      },
+    })
+  );
+  const finding = result.findings.find((f) => f.kind === "errors");
+  assert.ok(!("lastOccurred" in finding));
+});
+
 test("each distinct error signature is its own finding, not a single rolled-up count", () => {
   const result = analyzeProject(
     baseArgs({

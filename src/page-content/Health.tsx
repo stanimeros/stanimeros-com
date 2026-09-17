@@ -40,8 +40,10 @@ import {
 } from "@/components/health/levels"
 import {
   exactTime,
+  nextScheduledRun,
   readLocalStorage,
   timeAgo,
+  timeUntil,
   useHashState,
   writeLocalStorage,
 } from "@/components/health/format"
@@ -346,6 +348,11 @@ export default function Health() {
                       than look current. */}
                   {Date.now() - new Date(report.generated).getTime() > 9 * 3600000 && (
                     <span className={LEVEL_TEXT.warn}>· stale</span>
+                  )}
+                  {!viewingRunId && (
+                    <span title={exactTime(nextScheduledRun().toISOString())}>
+                      · next run {timeUntil(nextScheduledRun().toISOString())}
+                    </span>
                   )}
                   {loadingReport && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
                 </p>

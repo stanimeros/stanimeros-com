@@ -279,7 +279,7 @@ const HEALTH_OPTIONS = {
 // change what a spike or stall check is scored against. But the
 // rolling-24h "now" window those same checks (including the failure-rate
 // check inside analyze.js analyzeMetric / analyzeEntities) are scored
-// from, and the log scan's rolling logHours (48h, see config.js) window,
+// from, and the log scan's rolling logHours (24h, see config.js) window,
 // both shift with every run -- so three sweeps a day catch a live
 // incident well before a 24h-old one would age out unseen, without paging
 // anyone with a 3am-generated alert. "Run now" on the dashboard still
