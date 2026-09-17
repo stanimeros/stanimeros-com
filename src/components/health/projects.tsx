@@ -10,11 +10,14 @@ import { Series } from "@/components/health/charts"
 import type { ProjectResult } from "./types"
 import { LEVEL_STYLE } from "./levels"
 import { formatMoney, formatValue } from "./format"
-import { CostSummary, ExpandArrow, StatusIcon } from "./primitives"
+import { ExpandArrow, StatusIcon } from "./primitives"
 
 // Findings/errors are deliberately not shown here — they live on the
-// severity tabs and Overview. This card is metrics only: calls, reads,
-// storage etc. per function, against baseline.
+// severity tabs and Overview. Cost isn't either, beyond the headline 30d
+// figure in the collapsed row — the full breakdown (by window, by service)
+// lives on the Cost tab, and repeating it here was the same numbers on two
+// tabs. This card is metrics only: calls, reads, storage etc. per function,
+// against baseline.
 export function ProjectCard({ project }: { project: ProjectResult }) {
   const [open, setOpen] = useState(false)
   const metrics = Object.entries(project.metrics).filter(([key]) => !key.endsWith(".failed"))
@@ -111,8 +114,6 @@ export function ProjectCard({ project }: { project: ProjectResult }) {
               )}
             </div>
           )}
-
-          {project.cost && <CostSummary cost={project.cost} />}
         </CollapsibleContent>
       </Collapsible>
     </Card>

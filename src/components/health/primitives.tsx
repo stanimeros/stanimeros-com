@@ -5,7 +5,7 @@
 
 import { Fragment, useState } from "react"
 import type { ReactNode } from "react"
-import { Check, ChevronRight, Copy, Gauge } from "lucide-react"
+import { Check, ChevronRight, Copy, RotateCcw, CheckCircle2, Gauge } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -302,24 +302,14 @@ export function FindingsTable({
                             <p className="text-xs break-words whitespace-pre-wrap">{finding.text}</p>
                           </div>
                           {life ? (
-                            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
-                              <dt className="text-muted-foreground">State</dt>
-                              <dd>{life.state}</dd>
-                              <dt className="text-muted-foreground">Open</dt>
-                              <dd>{duration(life.firstSeen)}</dd>
-                              <dt className="text-muted-foreground">First seen</dt>
-                              <dd>{exactTime(life.firstSeen)}</dd>
-                              <dt className="text-muted-foreground">Last seen</dt>
-                              <dd>{exactTime(life.lastSeen)}</dd>
-                              <dt className="text-muted-foreground">Seen in</dt>
-                              <dd>{life.runsSeen} runs</dd>
-                              {life.ackedUntil && (
-                                <>
-                                  <dt className="text-muted-foreground">Acked until</dt>
-                                  <dd>{exactTime(life.ackedUntil)}</dd>
-                                </>
-                              )}
-                            </dl>
+                            // One line, not a label/value grid -- state is
+                            // already shown by the resolve control right
+                            // below, so it doesn't need its own row here too.
+                            <p className="text-xs text-muted-foreground">
+                              Open for {duration(life.firstSeen)} · first seen {exactTime(life.firstSeen)} · last seen{" "}
+                              {exactTime(life.lastSeen)} · seen in {life.runsSeen} run{life.runsSeen === 1 ? "" : "s"}
+                              {life.ackedUntil && <> · resolved until {exactTime(life.ackedUntil)}</>}
+                            </p>
                           ) : (
                             <span className="text-xs text-muted-foreground">No lifecycle history for this finding.</span>
                           )}
@@ -339,11 +329,14 @@ export function FindingsTable({
                               >
                                 {life?.state === "acked" ? (
                                   <>
-                                    <Check className="size-3" aria-hidden="true" />
-                                    Acknowledged
+                                    <RotateCcw className="size-3" aria-hidden="true" />
+                                    Mark as pending
                                   </>
                                 ) : (
-                                  "Acknowledge"
+                                  <>
+                                    <CheckCircle2 className="size-3" aria-hidden="true" />
+                                    Mark as resolved
+                                  </>
                                 )}
                               </button>
                             )}

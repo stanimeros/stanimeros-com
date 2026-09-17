@@ -275,8 +275,9 @@ export default function Health() {
   const sinceLast = useMemo(() => {
     if (!seen?.lastViewedAt) return null
     const newCount = findings.filter((f) => f.firstSeen > seen.lastViewedAt!).length
-    // Open only. Suppressed findings are counted nowhere else on the page, so
-    // including them here made "still open" disagree with every other number.
+    // Open (pending) only. Resolved findings are counted nowhere else on the
+    // page, so including them here made "still open" disagree with every
+    // other number.
     const stillOpen = findings.filter((f) => f.state === "open").length
     return { newCount, stillOpen, at: seen.lastViewedAt }
   }, [findings, seen])

@@ -43,7 +43,7 @@ export function SeverityTab({
   // Highest repeat count first -- the thing firing 40 times an hour outranks
   // the thing that fired once, regardless of which one happened to start
   // first. Longest-open is still the tiebreaker for two findings at the same
-  // count, so ties don't fall back to insertion order. Applied to Suppressed
+  // count, so ties don't fall back to insertion order. Applied to Resolved
   // too, for the same reason: acking something doesn't make its repeat count
   // stop mattering to whoever expands that list.
   const byCountThenAge = (a: Finding, b: Finding) => {
@@ -97,11 +97,11 @@ export function SeverityTab({
         </Card>
       )}
 
-      {/* Suppressed findings mute, they never hide — and estate-wide rather
+      {/* Resolved findings mute, they never hide — and estate-wide rather
           than buried behind one expander per project, which is where they
           used to be impossible to find. */}
       {acked.length > 0 && (
-        <CollapsedSection label="Suppressed" count={acked.length}>
+        <CollapsedSection label="Resolved" count={acked.length} icon={CheckCircle2}>
           <FindingsTable findings={acked} lifecycle={lifecycle} onAck={onAck} />
         </CollapsedSection>
       )}
