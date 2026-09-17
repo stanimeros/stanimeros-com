@@ -76,10 +76,15 @@ export function StatStrip({
   report,
   findingCounts,
   errorTotal,
+  healthyCount,
 }: {
   report: Report
   findingCounts: Record<Exclude<Level, "ok">, number>
   errorTotal: number
+  /** Projects with no un-acked findings — not `report.counts.ok`, which is
+   *  computed by the sweep with no awareness of acks and so never rises
+   *  just because everything on a project got marked resolved. */
+  healthyCount: number
 }) {
   // Findings for the three severities, then projects for "healthy" — the
   // trailing "of N projects" is what says the last number counts something
@@ -90,7 +95,7 @@ export function StatStrip({
     { label: "warnings", value: String(findingCounts.warn), tone: findingCounts.warn ? LEVEL_TEXT.warn : "" },
     { label: "low", value: String(findingCounts.low), tone: findingCounts.low ? LEVEL_TEXT.low : "" },
     { label: "log lines", value: formatValue(errorTotal, null), tone: "" },
-    { label: "healthy", value: String(report.counts.ok), tone: report.counts.ok ? LEVEL_TEXT.ok : "" },
+    { label: "healthy", value: String(healthyCount), tone: healthyCount ? LEVEL_TEXT.ok : "" },
   ]
   return (
     <Card className="flex-row flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
@@ -123,9 +128,10 @@ export function OverviewTab({
   errorTotal: number
   onSelectProject: (project: ProjectResult, tab: string) => void
 }) {
+  const healthyCount = projects.filter((p) => p.status === "ok").length
   return (
     <div className="space-y-3">
-      <StatStrip report={report} findingCounts={findingCounts} errorTotal={errorTotal} />
+      <StatStrip report={report} findingCounts={findingCounts} errorTotal={errorTotal} healthyCount={healthyCount} />
 
       {projects.length === 0 ? (
         <Card className="gap-1 px-4 py-3 text-sm">

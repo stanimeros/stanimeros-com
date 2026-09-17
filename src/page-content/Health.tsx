@@ -37,6 +37,7 @@ import {
   LEVEL_LABEL,
   SEVERITY_TABS,
   TAB_VALUES,
+  effectiveLevel,
 } from "@/components/health/levels"
 import {
   exactTime,
@@ -223,12 +224,19 @@ export default function Health() {
     }
   }
 
+  const lifecycle = useMemo(() => new Map(findings.map((f) => [f.key, f])), [findings])
+
+  // `project.status`, as returned by the sweep, knows nothing about acks —
+  // it's the worst level over live findings, full stop. Every card's border
+  // and icon reads `.status`, so replace it here, once, with the acked-aware
+  // level: the alternative is teaching every consumer (ProjectCard,
+  // ProjectOverviewCard, the finding-row project link) to re-derive it.
   const projects = useMemo(() => {
     if (!report) return []
-    return [...report.projects].sort(
-      (a, b) => LEVEL_ORDER[a.status] - LEVEL_ORDER[b.status] || a.name.localeCompare(b.name)
-    )
-  }, [report])
+    return [...report.projects]
+      .map((p) => ({ ...p, status: effectiveLevel(p.findings, lifecycle) }))
+      .sort((a, b) => LEVEL_ORDER[a.status] - LEVEL_ORDER[b.status] || a.name.localeCompare(b.name))
+  }, [report, lifecycle])
 
   const errorTotal = useMemo(
     () => projects.reduce((sum, p) => sum + (p.errorCount ?? 0), 0),
@@ -241,8 +249,6 @@ export default function Health() {
     [projects, projectFilter]
   )
 
-
-  const lifecycle = useMemo(() => new Map(findings.map((f) => [f.key, f])), [findings])
   /** Findings per level across the estate — the tab badges. Counts findings,
    *  not projects, and skips acked ones so a badge never contradicts the
    *  list it labels. */
@@ -256,6 +262,14 @@ export default function Health() {
     }
     return counts
   }, [projects, lifecycle])
+
+  // The header icon reads report.status, the same un-acked-aware field as
+  // each project card — derive it from the already-corrected `projects` list
+  // instead, so acking every finding on the estate actually turns it green.
+  const effectiveReportStatus = useMemo(
+    () => projects.reduce((worst, p) => (LEVEL_ORDER[p.status] < LEVEL_ORDER[worst] ? p.status : worst), "ok" as Level),
+    [projects]
+  )
 
   // The callable returns runs newest-first (orderBy runId desc), but every
   // time-series mark on this page reads left-to-right as oldest-to-newest.
@@ -335,12 +349,12 @@ export default function Health() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-semibold">System health</h1>
-                {report && <StatusIcon level={report.status} />}
+                {report && <StatusIcon level={effectiveReportStatus} />}
               </div>
               {report && (
                 <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
                   <span title={exactTime(report.generated)}>
-                    {LEVEL_LABEL[report.status]} · {timeAgo(report.generated)}
+                    {LEVEL_LABEL[effectiveReportStatus]} · {timeAgo(report.generated)}
                   </span>
                   · {report.mode} · {Math.round(report.durationMs / 1000)}s · {report.logHours}h error window
                   {/* Three runs a day; past ~9h the page is showing a sweep

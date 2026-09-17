@@ -8,9 +8,24 @@
 // that reads a level also gets the variables it resolves against.
 import "./palette.css"
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react"
-import type { Level } from "./types"
+import type { Finding, Level, LifecycleFinding } from "./types"
 
 export const LEVEL_ORDER: Record<Level, number> = { critical: 0, warn: 1, low: 2, ok: 3 }
+
+/** The severity a project should actually be shown at: worst level among its
+ *  findings that aren't acked ("resolved", in the UI's words). `project.status`
+ *  itself comes straight off the backend sweep and knows nothing about the
+ *  lifecycle collection, so anything that colors a border or picks an icon
+ *  must go through this instead, or acking every finding on a project still
+ *  leaves it looking critical until the next scheduled run. */
+export function effectiveLevel(findings: Finding[], lifecycle: Map<string, LifecycleFinding>): Level {
+  let worst: Level = "ok"
+  for (const finding of findings) {
+    if (lifecycle.get(finding.key)?.state === "acked") continue
+    if (LEVEL_ORDER[finding.level] < LEVEL_ORDER[worst]) worst = finding.level
+  }
+  return worst
+}
 
 /** The raw `var()` reference, for the charts — they set `style`/`background`
  *  rather than a Tailwind class, so they can't use LEVEL_TEXT. */
