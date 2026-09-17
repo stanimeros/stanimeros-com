@@ -40,10 +40,10 @@ export function timeUntil(iso: string) {
   return `in ${Math.round(hours / 24)}d`
 }
 
-// Must track functions/index.js's `healthCheck` schedule ("0 9,15,21 * * *",
+// Must track functions/index.js's `healthCheck` schedule ("0 8,13,18 * * *",
 // Europe/Athens) -- there is no API that reports a Cloud Scheduler job's next
 // fire time, so the header's "next run" line recomputes it here instead.
-const SCHEDULE_HOURS_ATHENS = [9, 15, 21]
+const SCHEDULE_HOURS_ATHENS = [8, 13, 18]
 
 /** The next instant one of the scheduled sweep hours occurs in Athens time,
  *  as an actual UTC instant (not a wall-clock guess) -- built by reading the

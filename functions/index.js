@@ -272,7 +272,7 @@ const HEALTH_OPTIONS = {
   maxInstances: 1,
 };
 
-// Three times through the working day (9am/3pm/9pm Athens), not once a
+// Three times through the working day (8am/1pm/6pm Athens), not once a
 // day and not overnight: the baseline every metric/entity check compares
 // against is a multi-day median (cfg.baselineDays, see monitoring.js
 // windowFor) that only moves day to day, so a same-day rerun wouldn't
@@ -284,12 +284,12 @@ const HEALTH_OPTIONS = {
 // incident well before a 24h-old one would age out unseen, without paging
 // anyone with a 3am-generated alert. "Run now" on the dashboard still
 // covers anything more urgent than a 6h cadence, or anything overnight.
-// 9am Athens is the anchor: it gives the UTC day (ends 00:00 UTC = 03:00
+// 8am Athens is the anchor: it gives the UTC day (ends 00:00 UTC = 03:00
 // Athens) time to settle in Monitoring before the first sweep reads it.
 exports.healthCheck = onSchedule(
   {
     ...HEALTH_OPTIONS,
-    schedule: "0 9,15,21 * * *",
+    schedule: "0 8,13,18 * * *",
     timeZone: "Europe/Athens",
     retryCount: 0,
   },
