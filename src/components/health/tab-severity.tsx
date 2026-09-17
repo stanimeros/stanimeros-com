@@ -43,12 +43,16 @@ export function SeverityTab({
   // Highest repeat count first -- the thing firing 40 times an hour outranks
   // the thing that fired once, regardless of which one happened to start
   // first. Longest-open is still the tiebreaker for two findings at the same
-  // count, so ties don't fall back to insertion order.
-  active.sort((a, b) => {
+  // count, so ties don't fall back to insertion order. Applied to Suppressed
+  // too, for the same reason: acking something doesn't make its repeat count
+  // stop mattering to whoever expands that list.
+  const byCountThenAge = (a: Finding, b: Finding) => {
     const byCount = (b.count ?? 1) - (a.count ?? 1)
     if (byCount !== 0) return byCount
     return (lifecycle.get(a.key)?.firstSeen ?? "").localeCompare(lifecycle.get(b.key)?.firstSeen ?? "")
-  })
+  }
+  active.sort(byCountThenAge)
+  acked.sort(byCountThenAge)
 
   // Counts the rows in the table below it, for every level. This used to be
   // the raw Cloud Logging line count for `critical` only, which meant the

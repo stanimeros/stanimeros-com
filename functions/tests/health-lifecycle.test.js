@@ -55,7 +55,7 @@ test("a key present again updates lastSeen and increments runsSeen without touch
   assert.equal(data.text, "new text");
 });
 
-test("a key absent this run produces no write at all -- there is no resolved/unknown state to transition to", () => {
+test("a key absent this run, on a project this run actually checked, is deleted -- a confirmed clear", () => {
   const key = "proj:spike:firestore.reads";
   const existing = new Map([
     [key, {
@@ -67,7 +67,8 @@ test("a key absent this run produces no write at all -- there is no resolved/unk
   const projects = [{ project: "proj", findings: [] }];
   const writes = planLifecycleUpdate(report(projects), existing, NOW);
 
-  assert.equal(writes.length, 0);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0], { key, op: "delete" });
 });
 
 test("an absent key's document is untouched even when its project errored this run", () => {
@@ -86,7 +87,11 @@ test("an absent key's document is untouched even when its project errored this r
   assert.equal(writes.length, 0);
 });
 
-test("a key that reappears after being absent is a plain continuation -- no reopen bookkeeping, firstSeen kept", () => {
+test("a key present again this very run is a plain continuation -- no reopen bookkeeping, firstSeen kept", () => {
+  // Note: this existing doc was never actually absent from a *checked* run in
+  // between -- if it had been, the doc would have been deleted already (see
+  // the confirmed-clear test above) and this would instead be a brand-new
+  // document. This test is about a doc simply persisting run to run.
   const key = "proj:spike:x";
   const existing = new Map([
     [key, {
@@ -102,6 +107,21 @@ test("a key that reappears after being absent is a plain continuation -- no reop
   assert.equal(data.state, "open");
   assert.equal(data.firstSeen, "2026-08-01T00:00:00Z");
   assert.equal(data.runsSeen, 21);
+});
+
+test("a key that reappears after being confirmed cleared starts a brand-new document -- fresh firstSeen, open", () => {
+  // This is the mechanism behind "ack it, and if it comes back later, treat
+  // it as new again": the prior doc was deleted the run it went quiet (see
+  // the confirmed-clear test above), so existingByKey has nothing for this
+  // key by the time it fires again -- same code path as any first-ever sighting.
+  const key = "proj:spike:x";
+  const projects = [{ project: "proj", findings: [finding(key)] }];
+  const writes = planLifecycleUpdate(report(projects), new Map(), NOW);
+
+  const data = writesByKey(writes).get(key);
+  assert.equal(data.state, "open");
+  assert.equal(data.firstSeen, "2026-09-16T12:00:00Z");
+  assert.equal(data.runsSeen, 1);
 });
 
 test("an acked finding within its window stays acked and keeps ackedUntil", () => {
@@ -180,7 +200,7 @@ test("an acked finding un-acks itself once ackedUntil has passed", () => {
   assert.equal(data.state, "open");
 });
 
-test("an acked finding that stops appearing produces no write -- acking never stops it being tracked, but absence isn't a transition either", () => {
+test("an acked finding that stops appearing on a checked project is deleted, acked or not -- there's nothing left to suppress", () => {
   const key = "proj:api_key_warning:x";
   const existing = new Map([
     [key, {
@@ -193,7 +213,8 @@ test("an acked finding that stops appearing produces no write -- acking never st
   const projects = [{ project: "proj", findings: [] }];
   const writes = planLifecycleUpdate(report(projects), existing, NOW);
 
-  assert.equal(writes.length, 0);
+  assert.equal(writes.length, 1);
+  assert.deepEqual(writes[0], { key, op: "delete" });
 });
 
 test("docIdFor makes a slash-bearing finding key safe as a Firestore document id", () => {

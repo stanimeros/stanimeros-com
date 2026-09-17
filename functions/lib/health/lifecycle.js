@@ -3,16 +3,22 @@
 // of one run; this collection is what turns a series of snapshots into
 // "when did this start" and "has it been acked".
 //
-// Ack is the only lifecycle control point -- there is no "resolved" state.
-// A key missing from this run's report is simply not written to here at
-// all: its document (if any) is left exactly as it was. That used to be a
-// deliberate diff (present -> absent = resolved, with a whole
-// project-actually-read guard to keep a 403'd project from reading as a
-// wave of false resolutions), but tracking that turned out to be more
-// fragile than it was worth -- a partial collector failure (see auth.js's
-// SCOPES history) could and did masquerade as real fixes. Simpler and more
-// honest: the dashboard only ever shows what's in *this run's* findings,
-// and acking is the one way a human marks something as seen.
+// A key missing from this run's report is a confirmed clear -- but only when
+// its project was actually checked this run (present in report.projects, not
+// left out via projectErrors). That guard is the whole story of why this was
+// ever removed: without it, a project that 403's for one run makes every one
+// of its findings look "resolved", which a real read the next run then makes
+// look "reopened" -- a wave of false transitions off of nothing but a failed
+// collector. With the guard, absence only ever means what it says.
+//
+// A confirmed clear is a hard delete, not a state -- there is still no
+// "resolved" row sitting in the collection to get out of sync with reality.
+// If the same key fires again later, planLifecycleUpdate's no-prior-doc
+// branch below creates a brand-new document (fresh firstSeen, state "open"),
+// same as any other new finding. That is deliberately the entire mechanism
+// for "ack it, and if it comes back later, treat it as new again": acking
+// only suppresses the current occurrence, and once that occurrence is
+// confirmed gone, there is nothing left to remember was acked.
 
 const { isoSecond } = require("./config");
 
@@ -105,13 +111,20 @@ function advanceDeployHistory(existing, cur) {
  * @param {{ projects: any[], projectErrors?: any[] }} report
  * @param {Map<string, any>} existingByKey - current `health_findings` docs, keyed by finding key
  * @param {Date} now
- * @returns {{ key: string, data: any }[]} documents that changed and need writing
+ * @returns {{ key: string, op: string, data?: any }[]} documents that changed and need writing or deleting
  */
 function planLifecycleUpdate(report, existingByKey, now) {
   const nowIso = isoSecond(now);
 
   const currentByKey = new Map();
+  // Which projects this run actually read -- report.projects only ever holds
+  // ones analyzeProject succeeded for (see index.js's buildReport), so a
+  // project that 403'd or otherwise failed is simply absent from it, not
+  // present with zero findings. That distinction is the guard: a key can only
+  // be confirmed cleared for a project this run actually looked at.
+  const checkedProjects = new Set();
   for (const project of report.projects) {
+    checkedProjects.add(project.project);
     for (const finding of project.findings) {
       currentByKey.set(finding.key, {
         project: project.project,
@@ -130,15 +143,14 @@ function planLifecycleUpdate(report, existingByKey, now) {
 
   // Keys present this run: open (or stay acked), lastSeen/runsSeen always
   // move, so every present key is written every run -- a few hundred docs,
-  // three times a day, well within budget. Keys absent this run are left
-  // untouched entirely -- no state to update, since presence in a report is
-  // no longer what this collection tracks.
+  // three times a day, well within budget.
   for (const [key, cur] of currentByKey) {
     const existing = existingByKey.get(key);
 
     if (!existing) {
       writes.push({
         key,
+        op: "set",
         data: {
           key,
           project: cur.project,
@@ -182,6 +194,7 @@ function planLifecycleUpdate(report, existingByKey, now) {
 
     writes.push({
       key,
+      op: "set",
       data: {
         key,
         project: cur.project,
@@ -199,6 +212,17 @@ function planLifecycleUpdate(report, existingByKey, now) {
         deploysSinceFirstSeen,
       },
     });
+  }
+
+  // Keys with an existing doc that didn't appear this run: a confirmed clear
+  // -- open or acked, it makes no difference, there's nothing left to track
+  // -- but only when this run actually checked the project the doc belongs
+  // to. One whose project errored this run is left exactly as it was, same
+  // as ever: unknown is not the same as gone.
+  for (const [key, existing] of existingByKey) {
+    if (currentByKey.has(key)) continue;
+    if (!checkedProjects.has(existing.project)) continue;
+    writes.push({ key, op: "delete" });
   }
 
   return writes;
@@ -230,8 +254,10 @@ async function updateLifecycle(db, report, now = new Date()) {
   // drop writes past the limit.
   for (let i = 0; i < writes.length; i += 500) {
     const batch = db.batch();
-    for (const { key, data } of writes.slice(i, i + 500)) {
-      batch.set(db.collection(FINDINGS).doc(docIdFor(key)), data);
+    for (const { key, op, data } of writes.slice(i, i + 500)) {
+      const ref = db.collection(FINDINGS).doc(docIdFor(key));
+      if (op === "delete") batch.delete(ref);
+      else batch.set(ref, data);
     }
     await batch.commit();
   }
