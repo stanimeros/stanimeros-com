@@ -5,12 +5,9 @@
  * The one law: on this page color means severity and nothing else. Status
  * colors below are reserved for status and never reused for quantity — the
  * exact hex values are taken from the mockup's `:root` block. Quantity
- * charts (Series, the Columns findings line) use the monochrome sequential
- * scale below, which is grey, not blue — the previous blue accent is gone.
- * The categorical set stays multi-hue: it is the one place on the page that
- * encodes *identity* (which error kind, which billed service), not
- * severity or quantity, so collapsing it to grey would destroy the only
- * thing it's for. See charts.tsx's C5/C6 comments.
+ * charts (Series) use the monochrome sequential scale below, which is grey,
+ * not blue — the previous blue accent is gone. Nothing on this page encodes
+ * identity, so there is no categorical set.
  *
  * All values are the ones validated in plan.md against this page's two
  * surfaces (white; dark card #262626) for colorblind separation and
@@ -34,12 +31,8 @@
   /* Estate hygiene, not an incident — a hue-free grey, deliberately not a
      fourth saturated hue and not readable as amber or green. */
   --hc-low: #8a8a8a;
-  /* Neutral chip behind a status pill — the one place a "tint" survives
-     (mockup decision 2): never colored, just a wash the status text/dot
-     sits on. */
 
-  /* Sequential (all quantity charts — Series, the Columns findings line),
-     light -> dark grey. No hue: these are quantity marks, not severity, and
+  /* Sequential (Series, the one quantity chart), light -> dark grey. No hue: these are quantity marks, not severity, and
      the mockup retires the old blue accent entirely. Same in both themes. */
   --hc-seq-1: #e4e4e4;
   --hc-seq-2: #cfcfcf;
@@ -49,26 +42,16 @@
   --hc-seq-6: #4e4e4e;
   --hc-seq-7: #161616;
 
-  /* Categorical (C5/C6 only), fixed slot order, light variant. */
-  --hc-cat-1: #2a78d6;
-  --hc-cat-2: #eb6834;
-  --hc-cat-3: #1baf7a;
-  --hc-cat-4: #eda100;
-
-  /* Recessive chrome: hairline grid/axis and the meter threshold tick. */
+  /* Recessive chrome: hairline grid/axis. */
   --hc-grid: rgba(0, 0, 0, 0.14);
   /* Baseline reference line (Series). The only dashed stroke on the page. */
   --hc-baseline: rgba(0, 0, 0, 0.42);
-  /* Empty meter/band track. */
+  /* Empty band track. */
   --hc-track: rgba(0, 0, 0, 0.08);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --hc-cat-1: #3987e5;
-    --hc-cat-2: #d95926;
-    --hc-cat-3: #199e70;
-    --hc-cat-4: #c98500;
     /* Lighter grey so it still reads against a dark card. */
     --hc-low: #9a9a9a;
 
@@ -87,10 +70,6 @@
 }
 
 :root[data-theme="dark"] {
-  --hc-cat-1: #3987e5;
-  --hc-cat-2: #d95926;
-  --hc-cat-3: #199e70;
-  --hc-cat-4: #c98500;
   --hc-low: #9a9a9a;
 
   --hc-seq-1: #3a3a3a;

@@ -122,6 +122,29 @@ test("an acked finding within its window stays acked and keeps ackedUntil", () =
   assert.equal(data.ackedUntil, "2026-10-01T00:00:00Z");
 });
 
+test("an ack with no expiry survives the next sweep -- null ackedUntil is indefinite, not already-expired", () => {
+  // The dashboard's Acknowledge button sends no `until`, so this is what
+  // every ack made from the UI looks like. Reading null as expired made a
+  // suppressed finding reappear on the very next run.
+  const key = "proj:api_key_warning:x";
+  const existing = new Map([
+    [key, {
+      key, project: "proj", level: "warn", kind: "api_key_warning", text: "x",
+      firstSeen: "2026-09-01T00:00:00Z", lastSeen: "2026-09-15T00:00:00Z",
+      state: "acked", runsSeen: 10,
+      ackedUntil: null,
+      ackedBy: "uid-1",
+    }],
+  ]);
+  const projects = [{ project: "proj", findings: [finding(key)] }];
+  const writes = planLifecycleUpdate(report(projects), existing, NOW);
+
+  const data = writesByKey(writes).get(key);
+  assert.equal(data.state, "acked");
+  assert.equal(data.ackedUntil, null);
+  assert.equal(data.ackedBy, "uid-1");
+});
+
 test("an acked finding un-acks itself when it escalates warn -> critical", () => {
   const key = "proj:api_key_warning:x";
   const existing = new Map([

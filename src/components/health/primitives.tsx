@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { CostBreakdown, Finding, Level, LifecycleFinding, ProjectResult } from "./types"
-import { LEVEL_CHIP_BG, LEVEL_ICON, LEVEL_LABEL, LEVEL_TEXT } from "./levels"
+import { LEVEL_CHIP_BG, LEVEL_ICON, LEVEL_TEXT } from "./levels"
 import { duration, exactTime, findingsToMarkdown, formatMoney } from "./format"
 
 export function StatusIcon({ level, className = "" }: { level: Level; className?: string }) {
@@ -176,68 +176,11 @@ export function ProjectValueRow({ project, right }: { project: ProjectResult; ri
   )
 }
 
-/** One finding row — shared between the tier groups below and the
- *  Acknowledged row, so acking never changes the row's own shape. */
-export function FindingRow({
-  finding,
-  lifecycle,
-  isNew,
-  onAck,
-}: {
-  finding: Finding
-  lifecycle?: Map<string, LifecycleFinding>
-  isNew?: (key: string) => boolean
-  onAck?: (key: string, ack: boolean) => void
-}) {
-  const life = lifecycle?.get(finding.key)
-  return (
-    <li className="flex flex-wrap items-baseline gap-2">
-      {finding.projectName && (
-        <Badge variant="outline" className="h-4 shrink-0 px-1 text-[10px]">
-          {finding.projectName}
-        </Badge>
-      )}
-      <span className={`shrink-0 font-mono font-medium ${LEVEL_TEXT[finding.level]}`}>{finding.kind}</span>
-      <span className="text-muted-foreground">{finding.text}</span>
-      {isNew?.(finding.key) && (
-        <Badge variant="destructive" className="h-4 shrink-0 px-1 text-[10px]">
-          NEW
-        </Badge>
-      )}
-      {life && (
-        <span
-          className="shrink-0 text-xs text-muted-foreground"
-          title={`First seen ${exactTime(life.firstSeen)} · seen in ${life.runsSeen} runs`}
-        >
-          open {duration(life.firstSeen)}
-        </span>
-      )}
-      {onAck && (
-        <button
-          type="button"
-          onClick={() => onAck(finding.key, life?.state !== "acked")}
-          className="inline-flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
-        >
-          {life?.state === "acked" ? (
-            <>
-              <Check className="size-3" aria-hidden="true" />
-              Acknowledged
-            </>
-          ) : (
-            "Acknowledge"
-          )}
-        </button>
-      )}
-    </li>
-  )
-}
-
-/** One severity, as a table: project, kind, message, and the lifecycle
- *  details (age, new/flapping) that used to trail the row as loose spans.
- *  Used by the severity tabs, where a flat estate-wide list of findings is
- *  actually being scanned column by column, not read as prose. A row
- *  expands in place (accordion-style, one at a time) to show the exact
- *  timestamps and ack control a table cell has no room for. */
+/** One severity, as a table: project, kind, message and count, with the
+ *  lifecycle details behind the row. Used by the severity tabs, where a flat
+ *  estate-wide list of findings is scanned column by column, not read as
+ *  prose. A row expands in place (accordion-style, one at a time) to show the
+ *  exact timestamps and ack control a table cell has no room for. */
 export function FindingsTable({
   findings,
   lifecycle,
@@ -415,73 +358,6 @@ export function FindingsTable({
           })}
         </tbody>
       </table>
-    </div>
-  )
-}
-
-/** Groups a project's (or the whole estate's) findings under the three
- *  tier headings the owner asked for — "errors, warnings, small/low-severity
- *  warnings" — instead of one undifferentiated list. Acked findings never
- *  appear here; they collapse into their own muted row, passed separately. */
-export function GroupedFindings({
-  findings,
-  lifecycle,
-  isNew,
-  onAck,
-}: {
-  findings: Finding[]
-  lifecycle?: Map<string, LifecycleFinding>
-  isNew?: (key: string) => boolean
-  onAck?: (key: string, ack: boolean) => void
-}) {
-  const tiers: Exclude<Level, "ok">[] = ["critical", "warn", "low"]
-  const groups = tiers
-    .map((level) => ({ level, items: findings.filter((f) => f.level === level) }))
-    .filter((g) => g.items.length > 0)
-
-  if (groups.length === 0) return null
-
-  return (
-    <div className="mt-3 space-y-3">
-      {groups.map((group) => (
-        <div key={group.level}>
-          <div className={`mb-1 flex items-center gap-1.5 text-xs font-medium ${LEVEL_TEXT[group.level]}`}>
-            <StatusIcon level={group.level} className="size-3.5" />
-            {LEVEL_LABEL[group.level]} ({group.items.length})
-          </div>
-          <ul className="space-y-1 text-sm">
-            {group.items.map((finding) => (
-              <FindingRow key={finding.key} finding={finding} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
-            ))}
-          </ul>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** 1.5 — acked findings mute, they don't hide. Collapsed by default behind a
- *  single muted row; expanding reveals the same `FindingRow`s as everywhere
- *  else, ack button included, so un-acking is one click from here too. */
-export function AckedRow({
-  findings,
-  lifecycle,
-  onAck,
-}: {
-  findings: Finding[]
-  lifecycle?: Map<string, LifecycleFinding>
-  onAck?: (key: string, ack: boolean) => void
-}) {
-  if (findings.length === 0) return null
-  return (
-    <div className="mt-3">
-      <CollapsedSection label="Acknowledged" count={findings.length}>
-        <ul className="space-y-1 pl-5 text-sm text-foreground">
-          {findings.map((finding) => (
-            <FindingRow key={finding.key} finding={finding} lifecycle={lifecycle} onAck={onAck} />
-          ))}
-        </ul>
-      </CollapsedSection>
     </div>
   )
 }

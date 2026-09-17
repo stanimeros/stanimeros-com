@@ -17,9 +17,9 @@ const eventMap = {
   },
 };
 
-import type { FbqFunction } from "./pixel";
-
-declare global { interface Window { fbq: FbqFunction; } }
+// `window.fbq` is declared once, in ./pixel — a second `declare global` here
+// only risks the two drifting apart.
+import "./pixel";
 
 export const trackEvent = (
   eventKey: keyof typeof eventMap,

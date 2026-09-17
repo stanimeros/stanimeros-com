@@ -94,7 +94,7 @@ export function writeLocalStorage(key: string, value: string) {
 }
 
 /** Parse `#tab=projects&project=foo&level=critical` into a plain object. */
-export function parseHash(hash: string): Record<string, string> {
+function parseHash(hash: string): Record<string, string> {
   const out: Record<string, string> = {}
   const raw = hash.replace(/^#/, "")
   if (!raw) return out
@@ -105,7 +105,7 @@ export function parseHash(hash: string): Record<string, string> {
   return out
 }
 
-export function buildHash(params: Record<string, string | null | undefined>): string {
+function buildHash(params: Record<string, string | null | undefined>): string {
   const parts = Object.entries(params)
     .filter(([, v]) => v)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v as string)}`)

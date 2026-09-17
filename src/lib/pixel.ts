@@ -9,8 +9,10 @@ export interface FbqFunction {
 
 declare global {
   interface Window {
-    fbq: FbqFunction;
-    _fbq: FbqFunction;
+    // Optional: both are absent until initPixel() installs them, which is
+    // exactly what the guard in initPixel() tests for.
+    fbq?: FbqFunction;
+    _fbq?: FbqFunction;
   }
 }
 

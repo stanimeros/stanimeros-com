@@ -3,10 +3,23 @@
 // one file, because a level that looks critical in one place and low in
 // another is the bug this module exists to prevent.
 
+// The colour values themselves live in ./palette.css as custom properties
+// with light and dark variants; imported here for its side effect so anything
+// that reads a level also gets the variables it resolves against.
+import "./palette.css"
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react"
 import type { Level } from "./types"
 
 export const LEVEL_ORDER: Record<Level, number> = { critical: 0, warn: 1, low: 2, ok: 3 }
+
+/** The raw `var()` reference, for the charts — they set `style`/`background`
+ *  rather than a Tailwind class, so they can't use LEVEL_TEXT/LEVEL_BG. */
+export const HEALTH_STATUS_VAR: Record<Level, string> = {
+  critical: "var(--hc-critical)",
+  warn: "var(--hc-warn)",
+  low: "var(--hc-low)",
+  ok: "var(--hc-good)",
+}
 
 // Mockup decision 2 — severity is a 3px stripe on the row/card edge, never a
 // Colors are the exact hex from the mockup's `:root` block (palette.css).
@@ -17,17 +30,8 @@ export const LEVEL_STYLE: Record<Level, string> = {
   ok: "border-l-[3px] border-l-transparent",
 }
 
-// Overview's project cards: a soft tint of the whole card instead of the
-// stripe used elsewhere, so the grid reads as color blocks at a glance.
-export const LEVEL_TINT: Record<Level, string> = {
-  critical: "border-[var(--hc-critical)]/30 bg-[var(--hc-critical)]/10",
-  warn: "border-[var(--hc-warn)]/30 bg-[var(--hc-warn)]/10",
-  low: "border-[var(--hc-low)]/30 bg-[var(--hc-low)]/10",
-  ok: "border-border bg-card",
-}
-
-// Overview's per-number chips: a stronger tint than LEVEL_TINT, background
-// only (no border), used behind a count when it's non-zero.
+// Overview's per-number chips: a soft tint, background only (no border),
+// used behind a count when it's non-zero.
 export const LEVEL_CHIP_BG: Record<Exclude<Level, "ok">, string> = {
   critical: "bg-[var(--hc-critical)]/15",
   warn: "bg-[var(--hc-warn)]/15",
@@ -85,9 +89,3 @@ export const SEVERITY_TABS: {
 ]
 
 export const TAB_VALUES = ["overview", ...SEVERITY_TABS.map((t) => t.value), "projects", "cost"]
-
-export const TAB_FOR_LEVEL: Record<Exclude<Level, "ok">, string> = {
-  critical: "errors",
-  warn: "warnings",
-  low: "low",
-}

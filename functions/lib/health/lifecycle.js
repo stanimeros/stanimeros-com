@@ -48,8 +48,13 @@ function docIdFor(key) {
   return key.replace(/\//g, "|");
 }
 
+// `ackedUntil: null` is an ack with NO expiry -- which is what the dashboard's
+// Acknowledge button writes, since it sends no `until`. Reading a missing
+// timestamp as "already expired" is what made suppressing a finding last
+// exactly until the next sweep, then silently un-suppress it.
 function isAckExpired(ackedUntil, now) {
-  return !ackedUntil || new Date(ackedUntil).getTime() <= now.getTime();
+  if (!ackedUntil) return false;
+  return new Date(ackedUntil).getTime() <= now.getTime();
 }
 
 // --- deploy trail (pure) ---------------------------------------------------
