@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { classify, signature, sourceOf, ALWAYS_REPORT } = require("../lib/health/logging");
+const { readErrors, classify, signature, sourceOf, ALWAYS_REPORT, SELF_AUDIT_TYPES } = require("../lib/health/logging");
 
 test("signature collapses a UUID, a hex address, and a long number so repeated errors of the same shape produce one signature", () => {
   const a = {
@@ -94,4 +94,34 @@ test("ALWAYS_REPORT contains exactly the seven quiet-but-important kinds", () =>
       "service_account_warning",
     ].sort()
   );
+});
+
+// The sweep runs its BigQuery billing queries from the same project it
+// monitors, so a failed query used to come back as an ERROR entry in that
+// project's own log feed -- and with criticalErrors = 1, painted the host
+// project red for a fault in the checker, not the app.
+test("readErrors excludes the BigQuery job-audit types the sweep generates against itself", async () => {
+  const original = globalThis.fetch;
+  let sentFilter = "";
+  globalThis.fetch = async (_url, init) => {
+    sentFilter = JSON.parse(init.body).filter;
+    return { ok: true, status: 200, json: async () => ({ entries: [] }) };
+  };
+  try {
+    await readErrors("stanimeros-dev", 48, "token");
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  assert.match(sentFilter, /severity>=ERROR/);
+  for (const type of SELF_AUDIT_TYPES) {
+    assert.ok(
+      sentFilter.includes(`resource.type!="${type}"`),
+      `filter should exclude ${type}, got: ${sentFilter}`
+    );
+  }
+});
+
+test("SELF_AUDIT_TYPES covers both resource types BigQuery logs one failed job under", () => {
+  assert.deepEqual([...SELF_AUDIT_TYPES].sort(), ["bigquery_project", "bigquery_resource"]);
 });

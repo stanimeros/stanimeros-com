@@ -123,13 +123,25 @@ async function postJson(url, token, body, { timeoutMs = 90000 } = {}) {
 // every failure path returns count: null (not 0) with empty collections.
 const EMPTY = { count: null, truncated: false, kinds: {}, sources: {}, top: [] };
 
+// The sweep watches the same project it runs BigQuery billing queries from,
+// so every failed billing query lands back in its own error feed as a
+// BigQuery job-audit entry -- under two resource types at once
+// (bigquery_resource and bigquery_project), which is why one bad query shows
+// up as two findings. With criticalErrors = 1, that noise alone is enough to
+// paint the host project red for a fault that isn't in any app. Nothing in
+// this estate runs BigQuery except the sweep, so dropping these audit types
+// costs no real signal and stops the checker from grading its own homework.
+const SELF_AUDIT_TYPES = ["bigquery_resource", "bigquery_project"];
+
+const EXCLUDE_SELF_AUDIT = SELF_AUDIT_TYPES.map((type) => ` AND resource.type!="${type}"`).join("");
+
 async function readErrors(projectId, hours, token) {
   const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
   let payload;
   try {
     payload = await postJson(LOGGING_URL, token, {
       resourceNames: [`projects/${projectId}`],
-      filter: `severity>=ERROR AND timestamp>="${since}"`,
+      filter: `severity>=ERROR AND timestamp>="${since}"${EXCLUDE_SELF_AUDIT}`,
       orderBy: "timestamp desc",
       pageSize: PAGE_SIZE,
     });
@@ -167,4 +179,4 @@ async function readErrors(projectId, hours, token) {
   return { count: entries.length, truncated, kinds, sources, top };
 }
 
-module.exports = { readErrors, classify, signature, sourceOf, ALWAYS_REPORT };
+module.exports = { readErrors, classify, signature, sourceOf, ALWAYS_REPORT, SELF_AUDIT_TYPES };

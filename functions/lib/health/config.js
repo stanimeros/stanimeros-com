@@ -193,6 +193,15 @@ const LIMITS = {
   lifecycleRetentionDays: 90,
 };
 
+// Second-precision ISO, the one timestamp shape everything in the sweep is
+// written and compared with. `generated` and the lifecycle cutoffs are
+// compared as *strings*, so a value carrying milliseconds sorts wrong against
+// one that doesn't -- which is why this must stay a single definition rather
+// than a regex copy-pasted at each call site.
+function isoSecond(date = new Date()) {
+  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 function thresholdsFor(projectId) {
   return { ...DEFAULTS, ...(OVERRIDES[projectId] || {}) };
 }
@@ -212,4 +221,5 @@ module.exports = {
   LIMITS,
   thresholdsFor,
   failureThresholdsFor,
+  isoSecond,
 };

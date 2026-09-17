@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import type { ReactNode } from "react"
 import {
   Activity,
   AlertCircle,
@@ -11,7 +12,6 @@ import {
   Gauge,
   Info,
   LayoutDashboard,
-  LayoutGrid,
   ListFilter,
   Loader2,
   LogIn,
@@ -19,7 +19,6 @@ import {
   Moon,
   RefreshCw,
   Sun,
-  Table as TableIcon,
   XCircle,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
@@ -38,7 +37,7 @@ import {
   markHealthSeen,
   getHealthSeen,
 } from "@/lib/firebase"
-import { StatusBand, Columns, ProportionBar, Series, StackedBar, DivergingBar, Meter } from "@/components/health/charts"
+import { StatusBand, Columns, Series, StackedBar, DivergingBar, Meter } from "@/components/health/charts"
 import { buildCategoricalSlotMap, toStackedBarSegments } from "@/components/health/palette"
 
 type Level = "critical" | "warn" | "low" | "ok"
@@ -147,22 +146,12 @@ interface Report {
 const LEVEL_ORDER: Record<Level, number> = { critical: 0, warn: 1, low: 2, ok: 3 }
 
 // Mockup decision 2 — severity is a 3px stripe on the row/card edge, never a
-// tinted card. A wash survives only behind a status pill (see `--hc-wash`).
 // Colors are the exact hex from the mockup's `:root` block (palette.css).
 const LEVEL_STYLE: Record<Level, string> = {
   critical: "border-l-[3px] border-l-[var(--hc-critical)]",
   warn: "border-l-[3px] border-l-[var(--hc-warn)]",
   low: "border-l-[3px] border-l-[var(--hc-low)]",
   ok: "border-l-[3px] border-l-transparent",
-}
-
-// The one project called out as "worst in the estate" still gets no colour
-// wash — just a heavier stripe than everyone else.
-const LEVEL_HIGHLIGHT_STYLE: Record<Level, string> = {
-  critical: "border-l-[5px] border-l-[var(--hc-critical)]",
-  warn: "border-l-[5px] border-l-[var(--hc-warn)]",
-  low: "border-l-[5px] border-l-[var(--hc-low)]",
-  ok: "border-border",
 }
 
 // The fill for a row's own stripe `<span>` (a background, not a border).
@@ -194,6 +183,29 @@ const LEVEL_LABEL: Record<Level, string> = {
   warn: "Warning",
   low: "Low",
   ok: "Healthy",
+}
+
+// The three severity tabs, in the order they're read. `kind` examples are the
+// findings the analyzer actually raises at that level, named here because
+// "warn" on its own doesn't say what it will contain.
+const SEVERITY_TABS: {
+  value: string
+  level: Exclude<Level, "ok">
+  label: string
+  icon: typeof CheckCircle2
+  emptyText: string
+}[] = [
+  { value: "errors", level: "critical", label: "Errors", icon: XCircle, emptyText: "No errors" },
+  { value: "warnings", level: "warn", label: "Warnings", icon: AlertTriangle, emptyText: "No warnings" },
+  { value: "low", level: "low", label: "Low", icon: Info, emptyText: "Nothing low-severity" },
+]
+
+const TAB_VALUES = ["overview", ...SEVERITY_TABS.map((t) => t.value), "cost"]
+
+const TAB_FOR_LEVEL: Record<Exclude<Level, "ok">, string> = {
+  critical: "errors",
+  warn: "warnings",
+  low: "low",
 }
 
 function formatValue(value: number, unit: string | null) {
@@ -338,6 +350,85 @@ function Tile({
   )
 }
 
+/** A section that starts closed: one muted summary line, expanded on click.
+ *  The dashboard is read by one person at a glance, so anything that isn't a
+ *  live problem lives behind one of these rather than being cut — the page
+ *  stays short without losing anything. */
+function CollapsedSection({
+  label,
+  count,
+  tone,
+  icon: Icon,
+  defaultOpen = false,
+  children,
+}: {
+  label: string
+  count?: number
+  tone?: string
+  icon?: typeof Gauge
+  defaultOpen?: boolean
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <Card className="gap-0 px-4 py-2.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1.5 text-left text-sm"
+      >
+        {open ? (
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        ) : (
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        )}
+        {Icon && <Icon className={`size-3.5 shrink-0 ${tone || "text-muted-foreground"}`} aria-hidden="true" />}
+        <span className={tone || ""}>{label}</span>
+        {count !== undefined && <span className="font-mono text-xs text-muted-foreground">{count}</span>}
+      </button>
+      {open && <div className="mt-2.5">{children}</div>}
+    </Card>
+  )
+}
+
+/** Cost for one project: the three windows on one line, then its top
+ *  services. Shared by the project drill-down and the Cost tab, which
+ *  rendered byte-identical copies of this before. */
+function CostSummary({ cost, limit = 5 }: { cost: CostBreakdown; limit?: number }) {
+  return (
+    <div className="text-sm">
+      <div className="mb-1 text-xs text-muted-foreground">
+        24h {formatMoney(cost.last24h, cost.currency)} · 7d {formatMoney(cost.last7d, cost.currency)} · 30d{" "}
+        {formatMoney(cost.last30d, cost.currency)}
+        {cost.prev30d ? ` (prev ${formatMoney(cost.prev30d, cost.currency)})` : ""}
+      </div>
+      <ul className="space-y-0.5">
+        {cost.byService.slice(0, limit).map((row) => (
+          <li key={row.service} className="flex justify-between gap-3">
+            <span className="truncate text-muted-foreground">{row.service}</span>
+            <span>{formatMoney(row.cost, cost.currency)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+/** "status icon · project name ………… figure" — the row shape both the cost
+ *  and error breakdowns use; only the right-hand figure differs. */
+function ProjectValueRow({ project, right }: { project: ProjectResult; right: ReactNode }) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-1.5 text-sm">
+      <span className="flex min-w-0 items-center gap-2">
+        <StatusIcon level={project.status} />
+        <span className="truncate">{project.name}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-2">{right}</span>
+    </li>
+  )
+}
+
 /** One finding row — shared between the tier groups below and the
  *  Acknowledged row, so acking never changes the row's own shape. */
 function FindingRow({
@@ -447,25 +538,16 @@ function AckedRow({
   lifecycle?: Map<string, LifecycleFinding>
   onAck?: (key: string, ack: boolean) => void
 }) {
-  const [open, setOpen] = useState(false)
   if (findings.length === 0) return null
   return (
-    <div className="mt-3 rounded-md border border-border/60 bg-muted/40 px-2 py-1.5 text-xs text-muted-foreground">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-1.5 text-left"
-      >
-        {open ? <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="size-3.5 shrink-0" aria-hidden="true" />}
-        Acknowledged ({findings.length})
-      </button>
-      {open && (
-        <ul className="mt-2 space-y-1 pl-5 text-sm text-foreground">
+    <div className="mt-3">
+      <CollapsedSection label="Acknowledged" count={findings.length}>
+        <ul className="space-y-1 pl-5 text-sm text-foreground">
           {findings.map((finding) => (
             <FindingRow key={finding.key} finding={finding} lifecycle={lifecycle} onAck={onAck} />
           ))}
         </ul>
-      )}
+      </CollapsedSection>
     </div>
   )
 }
@@ -475,13 +557,11 @@ function ProjectCard({
   lifecycle,
   isNew,
   onAck,
-  highlight,
 }: {
   project: ProjectResult
   lifecycle?: Map<string, LifecycleFinding>
   isNew?: (key: string) => boolean
   onAck?: (key: string, ack: boolean) => void
-  highlight?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const metrics = Object.entries(project.metrics).filter(([key]) => !key.endsWith(".failed"))
@@ -493,7 +573,7 @@ function ProjectCard({
 
   return (
     <Card
-      className={`gap-3 px-4 py-4 ${highlight ? LEVEL_HIGHLIGHT_STYLE[project.status] : LEVEL_STYLE[project.status]}`}
+      className={`gap-3 px-4 py-4 ${LEVEL_STYLE[project.status]}`}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="flex w-full items-start justify-between gap-3 text-left">
@@ -626,24 +706,7 @@ function ProjectCard({
             </div>
           )}
 
-          {project.cost && (
-            <div className="text-sm">
-              <div className="mb-1 text-xs text-muted-foreground">
-                Cost · 24h {formatMoney(project.cost.last24h, project.cost.currency)} · 7d{" "}
-                {formatMoney(project.cost.last7d, project.cost.currency)} · 30d{" "}
-                {formatMoney(project.cost.last30d, project.cost.currency)}
-                {project.cost.prev30d ? ` (prev ${formatMoney(project.cost.prev30d, project.cost.currency)})` : ""}
-              </div>
-              <ul className="space-y-0.5">
-                {project.cost.byService.slice(0, 5).map((row) => (
-                  <li key={row.service} className="flex justify-between gap-3">
-                    <span className="truncate text-muted-foreground">{row.service}</span>
-                    <span>{formatMoney(row.cost, project.cost!.currency)}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {project.cost && <CostSummary cost={project.cost} />}
 
           {project.topErrors.length > 0 && (
             <ul className="space-y-1 text-xs">
@@ -862,6 +925,51 @@ function TieredProjectRows({
   )
 }
 
+/** The findings a glance should land on: worst level first, then whichever
+ *  has been open longest. Acked findings never surface here. */
+function rankFindings(projects: ProjectResult[], lifecycle: Map<string, LifecycleFinding>) {
+  const rows: Finding[] = []
+  for (const project of projects) {
+    for (const finding of project.findings) {
+      if (lifecycle.get(finding.key)?.state === "acked") continue
+      rows.push({ ...finding, projectName: project.name })
+    }
+  }
+  return rows.sort((a, b) => {
+    const byLevel = LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]
+    if (byLevel !== 0) return byLevel
+    return (lifecycle.get(a.key)?.firstSeen ?? "").localeCompare(lifecycle.get(b.key)?.firstSeen ?? "")
+  })
+}
+
+/** The estate in one line. Replaces the proportion-bar card: at fifteen
+ *  projects the bar's segments were never the thing being read, the numbers
+ *  beside it were. */
+function StatStrip({ report, errorTotal }: { report: Report; errorTotal: number }) {
+  const cells: { label: string; value: string; tone?: string }[] = [
+    { label: "critical", value: String(report.counts.critical), tone: report.counts.critical ? LEVEL_TEXT.critical : "" },
+    { label: "warning", value: String(report.counts.warn), tone: report.counts.warn ? LEVEL_TEXT.warn : "" },
+    { label: "low", value: String(report.counts.low), tone: report.counts.low ? LEVEL_TEXT.low : "" },
+    { label: "clean", value: String(report.counts.ok), tone: report.counts.ok ? LEVEL_TEXT.ok : "" },
+    { label: "errors", value: formatValue(errorTotal, null) },
+  ]
+  return (
+    <Card className="flex-row flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
+      {cells.map((cell) => (
+        <span key={cell.label} className="flex items-baseline gap-1.5">
+          <span className={`text-lg font-semibold tabular-nums ${cell.tone || ""}`}>{cell.value}</span>
+          <span className="text-xs text-muted-foreground">{cell.label}</span>
+        </span>
+      ))}
+      <span className="ml-auto text-xs text-muted-foreground">of {report.counts.total} projects</span>
+    </Card>
+  )
+}
+
+/** Overview is a landing screen, not a report: the worst few findings, then
+ *  everything else behind a collapsed row. Nothing here is unique to this
+ *  tab — the severity tabs hold the full lists — so keeping it to one screen
+ *  costs no information. */
 function OverviewTab({
   report,
   projects,
@@ -870,7 +978,9 @@ function OverviewTab({
   lifecycle,
   isNew,
   onAck,
+  errorTotal,
   onSelectRun,
+  onOpenLevel,
 }: {
   report: Report
   projects: ProjectResult[]
@@ -879,70 +989,67 @@ function OverviewTab({
   lifecycle: Map<string, LifecycleFinding>
   isNew: (key: string) => boolean
   onAck: (key: string, ack: boolean) => void
+  errorTotal: number
   onSelectRun?: (runId: string) => void
+  onOpenLevel: (level: Exclude<Level, "ok">) => void
 }) {
-  // Mockup decisions 3 + 4 — projects grouped by tier (Errors / Warnings /
-  // Hygiene / Clean) are the primary structure now, so there's no separate
-  // estate-wide findings list here; each row's drill-down still has the
-  // full per-finding ack/un-ack UI.
-  const allHealthy = projects.every((p) => p.status === "ok")
+  const ranked = rankFindings(projects, lifecycle)
+  const lead = ranked.slice(0, 5)
+
+  // Mean time a finding stayed open, so the resolved row says something
+  // ("cleared in about 4h") instead of only counting.
+  const avgOpen = resolved.length
+    ? duration(
+        new Date(
+          Date.now() -
+            resolved.reduce(
+              (sum, f) => sum + (new Date(f.resolvedAt!).getTime() - new Date(f.firstSeen).getTime()),
+              0
+            ) /
+              resolved.length
+        ).toISOString()
+      )
+    : null
 
   return (
-    <div className="space-y-4">
-      {/* C3 — the same numbers the tiles used to spend a quarter of the
-          viewport on, as one bar whose proportions read at a glance. */}
-      {/* Cost moves off the front page (mockup decision: "Cost") — reachable
-          only from its own tab, which explains itself when the export is
-          stale instead of rendering a grid of dashes. */}
-      <Card className="gap-3 px-4 py-3">
-        <div className="min-w-0 flex-1 space-y-1">
-          <ProportionBar
-            segments={[
-              { level: "critical", count: report.counts.critical },
-              { level: "warn", count: report.counts.warn },
-              { level: "low", count: report.counts.low },
-              { level: "ok", count: report.counts.ok },
-            ]}
-          />
-          {/* The bar's own labels are bare counts; name what they count. */}
-          <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-            <span>{report.counts.critical} critical</span>
-            <span>{report.counts.warn} warning</span>
-            <span>{report.counts.low} low</span>
-            <span>{report.counts.ok} clean</span>
-            <span>of {report.counts.total} projects</span>
-          </div>
-        </div>
-      </Card>
+    <div className="space-y-3">
+      <StatStrip report={report} errorTotal={errorTotal} />
 
-      {/* C2 — the chart that shows a problem *ending*. Sparse until the
-          scheduled runs accumulate; it is deliberately shipped early so the
-          history it needs starts being recorded now. */}
-      {history.length > 1 && (
+      {lead.length === 0 ? (
+        <Card className="gap-1 px-4 py-3 text-sm">
+          <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.ok}`}>
+            <CheckCircle2 className="size-4" aria-hidden="true" />
+            Nothing open across {report.counts.total} projects
+          </span>
+        </Card>
+      ) : (
         <Card className="gap-2 px-4 py-3">
           <div className="flex items-baseline justify-between gap-3">
-            <span className="text-sm font-medium">Findings over time</span>
-            <span className="text-xs text-muted-foreground">{history.length} runs · projects affected, then total findings</span>
+            <span className="text-sm font-medium">Needs attention</span>
+            {ranked.length > lead.length && (
+              <button
+                type="button"
+                onClick={() => onOpenLevel(ranked[0].level)}
+                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              >
+                +{ranked.length - lead.length} more
+              </button>
+            )}
           </div>
-          <Columns
-            runs={history.map((run) => ({
-              runId: run.runId,
-              generated: run.generated,
-              counts: run.counts,
-              findingCount: run.findingCount,
-            }))}
-            activeRunId={report.runId}
-            onSelectRun={onSelectRun}
-          />
+          <ul className="space-y-1 text-sm">
+            {lead.map((finding) => (
+              <FindingRow key={finding.key} finding={finding} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
+            ))}
+          </ul>
         </Card>
       )}
 
       {resolved.length > 0 && (
-        <Card className="gap-2 border-l-[3px] border-l-[var(--hc-good)] px-4 py-3">
-          <div className={`flex items-center gap-1.5 text-sm font-medium ${LEVEL_TEXT.ok}`}>
-            <CheckCircle2 className="size-4" aria-hidden="true" />
-            Resolved in the last 7 days
-          </div>
+        <CollapsedSection
+          label={`${resolved.length} resolved in the last 7 days${avgOpen ? ` · avg open ${avgOpen}` : ""}`}
+          icon={CheckCircle2}
+          tone={LEVEL_TEXT.ok}
+        >
           <ul className="space-y-0.5 text-xs">
             {resolved.map((finding) => (
               <li key={finding.key} className="flex flex-wrap items-baseline gap-2">
@@ -953,15 +1060,15 @@ function OverviewTab({
               </li>
             ))}
           </ul>
-        </Card>
+        </CollapsedSection>
       )}
 
       {report.projectErrors.length > 0 && (
-        <Card className="gap-2 border-l-[3px] border-l-[var(--hc-warn)] px-4 py-3">
-          <div className={`flex items-center gap-1.5 text-sm font-medium ${LEVEL_TEXT.warn}`}>
-            <AlertCircle className="size-4" aria-hidden="true" />
-            Not checked
-          </div>
+        <CollapsedSection
+          label={`${report.projectErrors.length} project${report.projectErrors.length === 1 ? "" : "s"} not checked`}
+          icon={AlertCircle}
+          tone={LEVEL_TEXT.warn}
+        >
           <ul className="space-y-0.5 text-xs text-muted-foreground">
             {report.projectErrors.map((failure) => (
               <li key={failure.project}>
@@ -969,20 +1076,10 @@ function OverviewTab({
               </li>
             ))}
           </ul>
-        </Card>
+        </CollapsedSection>
       )}
 
-      {/* Mockup decisions 3 + 4 — one compact row per project, grouped under
-          Errors / Warnings / Hygiene / Clean. This is the primary structure
-          on both Overview (here, estate-wide) and Projects (filtered). */}
-      {allHealthy ? (
-        <Card className="gap-1 px-4 py-3 text-sm">
-          <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.ok}`}>
-            <CheckCircle2 className="size-4" aria-hidden="true" />
-            All projects are healthy
-          </span>
-        </Card>
-      ) : (
+      <CollapsedSection label="All projects" count={projects.length} icon={FolderKanban}>
         <TieredProjectRows
           projects={projects}
           lifecycle={lifecycle}
@@ -990,59 +1087,22 @@ function OverviewTab({
           onAck={onAck}
           generated={report.generated}
         />
+      </CollapsedSection>
+
+      {history.length > 1 && (
+        <CollapsedSection label="Findings over time" count={history.length} icon={Activity}>
+          <Columns
+            runs={history.map((run) => ({
+              runId: run.runId,
+              generated: run.generated,
+              counts: run.counts,
+              findingCount: run.findingCount,
+            }))}
+            activeRunId={report.runId}
+            onSelectRun={onSelectRun}
+          />
+        </CollapsedSection>
       )}
-    </div>
-  )
-}
-
-/** Mockup decision 3 — "Rows" is the default, dense view (~46px per project,
- *  tier-grouped, all 15 fit one screen). "Cards" is the alternate, kept for
- *  whoever wants the full drill-down open on every project at once. */
-function ProjectsTab({
-  projects,
-  lifecycle,
-  isNew,
-  onAck,
-  viewMode,
-  highlightKey,
-  generated,
-}: {
-  projects: ProjectResult[]
-  lifecycle: Map<string, LifecycleFinding>
-  isNew: (key: string) => boolean
-  onAck: (key: string, ack: boolean) => void
-  viewMode: "cards" | "table"
-  highlightKey?: string
-  generated?: string
-}) {
-  if (projects.length === 0) {
-    return <p className="py-6 text-center text-sm text-muted-foreground">No projects match the current filter.</p>
-  }
-
-  if (viewMode === "table") {
-    return (
-      <TieredProjectRows
-        projects={projects}
-        lifecycle={lifecycle}
-        isNew={isNew}
-        onAck={onAck}
-        generated={generated}
-      />
-    )
-  }
-
-  return (
-    <div className="space-y-3">
-      {projects.map((project) => (
-        <ProjectCard
-          key={project.project}
-          project={project}
-          lifecycle={lifecycle}
-          isNew={isNew}
-          onAck={onAck}
-          highlight={project.project === highlightKey}
-        />
-      ))}
     </div>
   )
 }
@@ -1096,7 +1156,88 @@ function ErrorSignatureRow({
   )
 }
 
-function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
+/** One severity, estate-wide and flat, the project reduced to a badge on the
+ *  row. Grouping by project instead is what made the old Projects and Errors
+ *  tabs read as the same screen twice — the per-project drill-down still
+ *  exists, under "All projects" on Overview. */
+function SeverityTab({
+  level,
+  projects,
+  lifecycle,
+  isNew,
+  onAck,
+  emptyText,
+  children,
+}: {
+  level: Exclude<Level, "ok">
+  projects: ProjectResult[]
+  lifecycle: Map<string, LifecycleFinding>
+  isNew: (key: string) => boolean
+  onAck: (key: string, ack: boolean) => void
+  emptyText: string
+  children?: ReactNode
+}) {
+  const active: Finding[] = []
+  const acked: Finding[] = []
+  for (const project of projects) {
+    for (const finding of project.findings) {
+      if (finding.level !== level) continue
+      const row = { ...finding, projectName: project.name }
+      if (lifecycle.get(finding.key)?.state === "acked") acked.push(row)
+      else active.push(row)
+    }
+  }
+  // Longest-open first: the one that's been broken for six days outranks the
+  // one that appeared this sweep.
+  active.sort((a, b) =>
+    (lifecycle.get(a.key)?.firstSeen ?? "").localeCompare(lifecycle.get(b.key)?.firstSeen ?? "")
+  )
+
+  return (
+    <div className="space-y-3">
+      {active.length === 0 ? (
+        <Card className="gap-1 px-4 py-3 text-sm">
+          <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.ok}`}>
+            <CheckCircle2 className="size-4" aria-hidden="true" />
+            {emptyText}
+          </span>
+        </Card>
+      ) : (
+        <Card className={`gap-2 px-4 py-3 ${LEVEL_STYLE[level]}`}>
+          <div className={`flex items-center gap-1.5 text-sm font-medium ${LEVEL_TEXT[level]}`}>
+            <StatusIcon level={level} className="size-3.5" />
+            {LEVEL_LABEL[level]} ({active.length})
+          </div>
+          <ul className="space-y-1 text-sm">
+            {active.map((finding) => (
+              <FindingRow key={finding.key} finding={finding} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {/* Suppressed findings mute, they never hide — and estate-wide rather
+          than buried behind one expander per project, which is where they
+          used to be impossible to find. */}
+      {acked.length > 0 && (
+        <CollapsedSection label="Suppressed" count={acked.length}>
+          <ul className="space-y-1 text-sm">
+            {acked.map((finding) => (
+              <FindingRow key={finding.key} finding={finding} lifecycle={lifecycle} onAck={onAck} />
+            ))}
+          </ul>
+        </CollapsedSection>
+      )}
+
+      {children}
+    </div>
+  )
+}
+
+/** The raw Cloud Logging side of "errors", as opposed to the findings the
+ *  analyzer raised from them. Lives under the Errors tab because that's the
+ *  only place the distinction matters. */
+function ErrorLogPanels({ projects }: { projects: ProjectResult[] }) {
   const signatureMap = new Map<
     string,
     { projectName: string; status: Level; source: string; total: number; messages: { message: string; count: number }[] }
@@ -1114,9 +1255,7 @@ function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
     }
   }
   const signatureRows = [...signatureMap.values()].sort((a, b) => b.total - a.total)
-
   const unread = projects.filter((p) => p.errorCount === null)
-  const totalErrors = projects.reduce((sum, p) => sum + (p.errorCount ?? 0), 0)
 
   // One slot map for the whole tab, built from estate-wide totals — a kind
   // must not change color from one project's row to the next.
@@ -1138,23 +1277,7 @@ function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
     }))
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <Tile label="Total errors" value={formatValue(totalErrors, null)} icon={AlertCircle} />
-        <Tile
-          label="Projects with errors"
-          value={String(projects.filter((p) => (p.errorCount ?? 0) > 0).length)}
-          icon={FolderKanban}
-        />
-        <Tile
-          label="Unread logs"
-          value={String(unread.length)}
-          tone={unread.length ? LEVEL_TEXT.warn : ""}
-          icon={AlertTriangle}
-          className="col-span-2 sm:col-span-1"
-        />
-      </div>
-
+    <>
       {unread.length > 0 && (
         <Card className="gap-1 border-l-[3px] border-l-[var(--hc-warn)] px-4 py-3 text-sm">
           <span className={`font-medium ${LEVEL_TEXT.warn}`}>Log read failed for:</span>{" "}
@@ -1162,12 +1285,28 @@ function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
         </Card>
       )}
 
+      {signatureRows.length > 0 && (
+        <CollapsedSection label="Top error messages" count={signatureRows.length} icon={AlertTriangle}>
+          <ul className="space-y-1.5 text-sm">
+            {signatureRows.map((row) => (
+              <ErrorSignatureRow
+                key={`${row.projectName}::${row.source}`}
+                projectName={row.projectName}
+                status={row.status}
+                source={row.source}
+                total={row.total}
+                messages={row.messages}
+              />
+            ))}
+          </ul>
+        </CollapsedSection>
+      )}
+
       {/* C6 — a wall of missing_index is a ten-minute fix; a wall of `other`
           is an investigation. Slots are assigned from the estate-wide totals
           so a kind keeps its color on every row. */}
       {kindRows.length > 0 && (
-        <Card className="gap-2 px-4 py-3">
-          <div className="text-sm font-medium">Error kinds by project</div>
+        <CollapsedSection label="Error kinds by project" count={kindRows.length} icon={Gauge}>
           <ul className="space-y-2">
             {kindRows.map(({ project, segments }) => (
               <li key={project.project}>
@@ -1181,50 +1320,29 @@ function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
               </li>
             ))}
           </ul>
-        </Card>
+        </CollapsedSection>
       )}
 
-      <Card className="px-4 py-3">
-        <div className="mb-2 text-sm font-medium">Top errors across all projects</div>
-        {signatureRows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No errors in the current window.</p>
-        ) : (
-          <ul className="space-y-1.5 text-sm">
-            {signatureRows.map((row) => (
-              <ErrorSignatureRow
-                key={`${row.projectName}::${row.source}`}
-                projectName={row.projectName}
-                status={row.status}
-                source={row.source}
-                total={row.total}
-                messages={row.messages}
-              />
-            ))}
-          </ul>
-        )}
-      </Card>
-
-      <Card className="px-4 py-3">
-        <div className="mb-2 text-sm font-medium">Errors by project</div>
+      <CollapsedSection label="Error count by project" count={projects.length} icon={FolderKanban}>
         <ul className="divide-y divide-border/60">
           {[...projects]
             .sort((a, b) => (b.errorCount ?? 0) - (a.errorCount ?? 0))
             .map((project) => (
-              <li key={project.project} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-                <span className="flex min-w-0 items-center gap-2">
-                  <StatusIcon level={project.status} />
-                  <span className="truncate">{project.name}</span>
-                </span>
-                <span className="shrink-0 text-muted-foreground">
-                  {project.errorCount === null
-                    ? "unread"
-                    : `${formatValue(project.errorCount, null)}${project.errorTruncated ? "+" : ""}`}
-                </span>
-              </li>
+              <ProjectValueRow
+                key={project.project}
+                project={project}
+                right={
+                  <span className="text-muted-foreground">
+                    {project.errorCount === null
+                      ? "unread"
+                      : `${formatValue(project.errorCount, null)}${project.errorTruncated ? "+" : ""}`}
+                  </span>
+                }
+              />
             ))}
         </ul>
-      </Card>
-    </div>
+      </CollapsedSection>
+    </>
   )
 }
 
@@ -1232,27 +1350,35 @@ function CostTab({ report, projects }: { report: Report; projects: ProjectResult
   const withCost = projects.filter((p): p is ProjectResult & { cost: CostBreakdown } => p.cost !== null)
   const sorted = [...withCost].sort((a, b) => b.cost.last30d - a.cost.last30d)
 
-  // Mockup: while the billing export is dead, a grid of dashes reads as "no
-  // spend", which is worse than not showing it. Show the staleness
-  // explanation as the tab's whole content instead of the usual figures.
-  if (report.costStale) {
+  // A grid of dashes would read as "no spend", so an unreadable export still
+  // gets the banner instead of figures. A *lagging* one doesn't: the export
+  // backfills forward, and blanking the tab until it catches up is how this
+  // sat empty. Date the numbers and show them.
+  const banner = report.costStale ? (
+    <Card className="gap-1 border-l-[3px] border-l-[var(--hc-warn)] px-4 py-3 text-sm">
+      <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.warn}`}>
+        <AlertTriangle className="size-4" aria-hidden="true" />
+        Cost data is stale
+      </span>
+      <span className="text-muted-foreground">
+        {report.costDataThrough
+          ? `The billing export has nothing newer than ${report.costDataThrough} — every figure below stops there and is missing whatever happened since.`
+          : "The billing export could not be read at all, so no cost figure here can be trusted."}
+      </span>
+    </Card>
+  ) : null
+
+  if (report.costDataThrough == null) {
     return (
-      <Card className="gap-1 border-l-[3px] border-l-[var(--hc-warn)] px-4 py-4 text-sm">
-        <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.warn}`}>
-          <AlertTriangle className="size-4" aria-hidden="true" />
-          Cost data is stale
-        </span>
-        <span className="text-muted-foreground">
-          {report.costDataThrough
-            ? `The billing export has nothing newer than ${report.costDataThrough}. Every figure this tab would show is missing whatever happened since, so none are shown.`
-            : "The billing export could not be read at all, so no cost figure here can be trusted."}
-        </span>
-      </Card>
+      banner || (
+        <Card className="px-4 py-4 text-sm text-muted-foreground">No cost data available.</Card>
+      )
     )
   }
 
   return (
     <div className="space-y-4">
+      {banner}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Tile
           label={`Total · ${report.costWindowDays}d`}
@@ -1287,73 +1413,53 @@ function CostTab({ report, projects }: { report: Report; projects: ProjectResult
                 ? ((project.cost.last30d - project.cost.prev30d) / project.cost.prev30d) * 100
                 : null
               return (
-                <li key={project.project} className="flex items-center justify-between gap-3 py-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <StatusIcon level={project.status} />
-                    <span className="truncate">{project.name}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {delta !== null && (
-                      <span className={`text-xs ${delta > 5 ? LEVEL_TEXT.warn : "text-muted-foreground"}`}>
-                        {delta > 0 ? "+" : ""}
-                        {Math.round(delta)}%
-                      </span>
-                    )}
-                    <span>{formatMoney(project.cost.last30d, project.cost.currency)}</span>
-                  </span>
-                </li>
+                <ProjectValueRow
+                  key={project.project}
+                  project={project}
+                  right={
+                    <>
+                      {delta !== null && (
+                        <span className={`text-xs ${delta > 5 ? LEVEL_TEXT.warn : "text-muted-foreground"}`}>
+                          {delta > 0 ? "+" : ""}
+                          {Math.round(delta)}%
+                        </span>
+                      )}
+                      <span>{formatMoney(project.cost.last30d, project.cost.currency)}</span>
+                    </>
+                  }
+                />
               )
             })}
           </ul>
         )}
       </Card>
 
-      {sorted.map((project) => (
-        <Card key={project.project} className="px-4 py-3">
-          <div className="mb-2 flex items-center justify-between text-sm font-medium">
-            <span>{project.name}</span>
-            <span className="text-xs text-muted-foreground">
-              24h {formatMoney(project.cost.last24h, project.cost.currency)} · 7d{" "}
-              {formatMoney(project.cost.last7d, project.cost.currency)}
-            </span>
-          </div>
-          <ul className="space-y-0.5 text-sm">
-            {project.cost.byService.slice(0, 5).map((row) => (
-              <li key={row.service} className="flex justify-between gap-3">
-                <span className="truncate text-muted-foreground">{row.service}</span>
-                <span>{formatMoney(row.cost, project.cost.currency)}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ))}
+      <CollapsedSection label="Per-project breakdown" count={sorted.length}>
+        <div className="space-y-3">
+          {sorted.map((project) => (
+            <div key={project.project}>
+              <div className="mb-1 text-sm font-medium">{project.name}</div>
+              <CostSummary cost={project.cost} />
+            </div>
+          ))}
+        </div>
+      </CollapsedSection>
     </div>
   )
 }
 
-/** 4.4 — one filter row above everything it scopes: project + level,
- *  never per-chart or inside a chart card. Also carries the Projects tab's
- *  cards/table density toggle, since that too is a single, shared control. */
+/** One filter row above everything it scopes. Project only — the severity
+ *  tabs are the level filter now, and a second control that could contradict
+ *  the open tab was exactly the kind of thing making this page hard to read. */
 function FilterBar({
   projects,
   projectFilter,
-  levelFilter,
   onProjectFilterChange,
-  onLevelFilterChange,
-  viewMode,
-  onViewModeChange,
-  showViewToggle,
 }: {
   projects: ProjectResult[]
   projectFilter: string
-  levelFilter: string
   onProjectFilterChange: (value: string) => void
-  onLevelFilterChange: (value: string) => void
-  viewMode: "cards" | "table"
-  onViewModeChange: (value: "cards" | "table") => void
-  showViewToggle: boolean
 }) {
-  const levels: Level[] = ["critical", "warn", "low", "ok"]
   return (
     <Card className="flex-row flex-wrap items-center gap-2 px-4 py-2.5">
       <span className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -1373,56 +1479,14 @@ function FilterBar({
           </option>
         ))}
       </select>
-      <select
-        value={levelFilter}
-        onChange={(e) => onLevelFilterChange(e.target.value)}
-        aria-label="Filter by level"
-        className="min-w-0 rounded-md border border-border bg-background px-2 py-1 text-xs"
-      >
-        <option value="">All levels</option>
-        {levels.map((level) => (
-          <option key={level} value={level}>
-            {LEVEL_LABEL[level]}
-          </option>
-        ))}
-      </select>
-      {(projectFilter || levelFilter) && (
+      {projectFilter && (
         <button
           type="button"
-          onClick={() => {
-            onProjectFilterChange("")
-            onLevelFilterChange("")
-          }}
+          onClick={() => onProjectFilterChange("")}
           className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
         >
           Clear
         </button>
-      )}
-      {showViewToggle && (
-        <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5">
-          <button
-            type="button"
-            onClick={() => onViewModeChange("table")}
-            aria-pressed={viewMode === "table"}
-            className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-              viewMode === "table" ? "bg-muted font-medium" : "text-muted-foreground"
-            }`}
-          >
-            <TableIcon className="size-3.5" aria-hidden="true" />
-            Rows
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewModeChange("cards")}
-            aria-pressed={viewMode === "cards"}
-            className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-              viewMode === "cards" ? "bg-muted font-medium" : "text-muted-foreground"
-            }`}
-          >
-            <LayoutGrid className="size-3.5" aria-hidden="true" />
-            Cards
-          </button>
-        </div>
       )}
     </Card>
   )
@@ -1444,15 +1508,15 @@ export default function Health() {
   const hashState = useHashState()
   const [tab, setTabState] = useState("overview")
   const [projectFilter, setProjectFilterState] = useState("")
-  const [levelFilter, setLevelFilterState] = useState("")
   const hashInitialized = useRef(false)
 
   useEffect(() => {
     if (!hashState.ready || hashInitialized.current) return
     hashInitialized.current = true
-    if (hashState.params.tab) setTabState(hashState.params.tab)
+    // A stale link (#tab=projects, from before the severity tabs) must not
+    // select a tab that no longer exists and render nothing.
+    if (hashState.params.tab && TAB_VALUES.includes(hashState.params.tab)) setTabState(hashState.params.tab)
     if (hashState.params.project) setProjectFilterState(hashState.params.project)
-    if (hashState.params.level) setLevelFilterState(hashState.params.level)
   }, [hashState.ready, hashState.params])
 
   const setTab = useCallback(
@@ -1469,32 +1533,15 @@ export default function Health() {
     },
     [hashState]
   )
-  const setLevelFilter = useCallback(
-    (next: string) => {
-      setLevelFilterState(next)
-      hashState.update({ level: next || null })
-    },
-    [hashState]
-  )
 
-  // 5.3 — table vs card density for the Projects tab, remembered per viewer.
-  // Mockup decision 3 — Rows ("table") is the primary, default view; Cards
-  // stays reachable as the alternate.
-  const [viewMode, setViewModeState] = useState<"cards" | "table">("table")
   // 5.4 — light/dark is a toggle, default light, remembered per viewer.
   const [theme, setThemeState] = useState<"light" | "dark">("light")
 
   useEffect(() => {
-    const storedView = readLocalStorage("health.viewMode")
-    if (storedView === "table" || storedView === "cards") setViewModeState(storedView)
     const storedTheme = readLocalStorage("health.theme")
     if (storedTheme === "dark" || storedTheme === "light") setThemeState(storedTheme)
   }, [])
 
-  const setViewMode = useCallback((next: "cards" | "table") => {
-    setViewModeState(next)
-    writeLocalStorage("health.viewMode", next)
-  }, [])
   const setTheme = useCallback((next: "light" | "dark") => {
     setThemeState(next)
     writeLocalStorage("health.theme", next)
@@ -1583,20 +1630,27 @@ export default function Health() {
     [projects]
   )
 
-  // 5.1 — the one card that gets a saturated fill: the single worst project
-  // in the estate. `projects` is already sorted worst-first.
-  const highlightKey = useMemo(() => projects.find((p) => p.status !== "ok")?.project, [projects])
-
-  // 4.4 — the filter row scopes only the Projects and Errors tabs.
+  // The filter row scopes the severity tabs; the tab itself is the level.
   const filteredProjects = useMemo(
-    () =>
-      projects.filter(
-        (p) => (!projectFilter || p.project === projectFilter) && (!levelFilter || p.status === levelFilter)
-      ),
-    [projects, projectFilter, levelFilter]
+    () => projects.filter((p) => !projectFilter || p.project === projectFilter),
+    [projects, projectFilter]
   )
 
+
   const lifecycle = useMemo(() => new Map(findings.map((f) => [f.key, f])), [findings])
+  /** Findings per level across the estate — the tab badges. Counts findings,
+   *  not projects, and skips acked ones so a badge never contradicts the
+   *  list it labels. */
+  const findingCounts = useMemo(() => {
+    const counts: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
+    for (const project of projects) {
+      for (const finding of project.findings) {
+        if (lifecycle.get(finding.key)?.state === "acked") continue
+        counts[finding.level] += 1
+      }
+    }
+    return counts
+  }, [projects, lifecycle])
 
   // The callable returns runs newest-first (orderBy runId desc), but every
   // time-series mark on this page reads left-to-right as oldest-to-newest.
@@ -1808,47 +1862,38 @@ export default function Health() {
 
         {report && (
           <Tabs value={tab} onValueChange={setTab} className="space-y-4">
-            <TabsList className="grid w-full grid-cols-4 bg-muted sm:flex">
+            {/* One tab per severity, which is how the dashboard is actually
+                read ("what's broken, what's odd, what's noise") — the old
+                Projects/Errors split was the same findings cut two ways. */}
+            <TabsList className="grid w-full grid-cols-5 bg-muted sm:flex">
               <TabsTrigger value="overview" className="sm:flex-1">
                 <LayoutDashboard className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Overview</span>
               </TabsTrigger>
-              <TabsTrigger value="projects" className="sm:flex-1">
-                <FolderKanban className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Projects</span>
-                {report.counts.critical + report.counts.warn > 0 && (
-                  <Badge variant="destructive" className="h-4 px-1 text-[10px]">
-                    {report.counts.critical + report.counts.warn}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="errors" className="sm:flex-1">
-                <AlertTriangle className="size-4" aria-hidden="true" />
-                <span className="hidden sm:inline">Errors</span>
-                {errorTotal > 0 && (
-                  <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                    {formatValue(errorTotal, null)}
-                  </Badge>
-                )}
-              </TabsTrigger>
+              {SEVERITY_TABS.map(({ value, level, label, icon: Icon }) => (
+                <TabsTrigger key={value} value={value} className="sm:flex-1">
+                  <Icon className={`size-4 ${LEVEL_TEXT[level]}`} aria-hidden="true" />
+                  <span className="hidden sm:inline">{label}</span>
+                  {findingCounts[level] > 0 && (
+                    <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                      {findingCounts[level]}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              ))}
               <TabsTrigger value="cost" className="sm:flex-1">
                 <CircleDollarSign className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Cost</span>
               </TabsTrigger>
             </TabsList>
 
-            {/* 4.4 — one filter row above everything it scopes: Projects and
-                Errors only, never per-chart or duplicated per tab. */}
-            {(tab === "projects" || tab === "errors") && (
+            {/* One filter row above everything it scopes — the severity tabs
+                only, since the tab itself is now the level filter. */}
+            {tab !== "overview" && tab !== "cost" && (
               <FilterBar
                 projects={projects}
                 projectFilter={projectFilter}
-                levelFilter={levelFilter}
                 onProjectFilterChange={setProjectFilter}
-                onLevelFilterChange={setLevelFilter}
-                viewMode={viewMode}
-                onViewModeChange={setViewMode}
-                showViewToggle={tab === "projects"}
               />
             )}
 
@@ -1861,23 +1906,27 @@ export default function Health() {
                 lifecycle={lifecycle}
                 isNew={isNew}
                 onAck={onAck}
+                errorTotal={errorTotal}
                 onSelectRun={(runId) => load(runId)}
+                onOpenLevel={(level) => setTab(TAB_FOR_LEVEL[level])}
               />
             </TabsContent>
-            <TabsContent value="projects">
-              <ProjectsTab
-                projects={filteredProjects}
-                lifecycle={lifecycle}
-                isNew={isNew}
-                onAck={onAck}
-                viewMode={viewMode}
-                highlightKey={highlightKey}
-                generated={report.generated}
-              />
-            </TabsContent>
-            <TabsContent value="errors">
-              <ErrorsTab projects={filteredProjects} />
-            </TabsContent>
+
+            {SEVERITY_TABS.map(({ value, level, emptyText }) => (
+              <TabsContent key={value} value={value}>
+                <SeverityTab
+                  level={level}
+                  projects={filteredProjects}
+                  lifecycle={lifecycle}
+                  isNew={isNew}
+                  onAck={onAck}
+                  emptyText={emptyText}
+                >
+                  {level === "critical" && <ErrorLogPanels projects={filteredProjects} />}
+                </SeverityTab>
+              </TabsContent>
+            ))}
+
             <TabsContent value="cost">
               <CostTab report={report} projects={projects} />
             </TabsContent>

@@ -7,7 +7,7 @@
 
 const admin = require("firebase-admin");
 
-const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, LIMITS, thresholdsFor } = require("./config");
+const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, LIMITS, thresholdsFor, isoSecond } = require("./config");
 const { getAccessToken } = require("./auth");
 const { timeseries, breakdown, windowFor, rollingWindow } = require("./monitoring");
 const { readErrors } = require("./logging");
@@ -29,7 +29,7 @@ const HOST_PROJECT = "stanimeros-dev";
 const CONCURRENCY = 6;
 
 function runId(date) {
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z").replace(/:/g, "-");
+  return isoSecond(date).replace(/:/g, "-");
 }
 
 async function mapWithLimit(items, limit, worker) {
@@ -170,7 +170,7 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
 
   return {
     runId: runId(startedAt),
-    generated: startedAt.toISOString().replace(/\.\d{3}Z$/, "Z"),
+    generated: isoSecond(startedAt),
     mode,
     baselineDays: cfg.baselineDays,
     logHours: cfg.logHours,
@@ -199,9 +199,7 @@ async function pruneOldReports(db) {
   // Same second-precision shape the reports are written with — `generated` is
   // compared as a string, so a cutoff carrying milliseconds would sort wrong
   // against values that don't.
-  const cutoff = new Date(Date.now() - LIMITS.reportRetentionDays * 86400000)
-    .toISOString()
-    .replace(/\.\d{3}Z$/, "Z");
+  const cutoff = isoSecond(new Date(Date.now() - LIMITS.reportRetentionDays * 86400000));
   const snap = await db
     .collection(REPORTS)
     .where("generated", "<", cutoff)
@@ -250,7 +248,7 @@ async function runHealthCheck({ mode = "scheduled" } = {}) {
       status: report.status,
       findingKeys: allKeys,
       ...(sent
-        ? { lastEmailAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"), lastEmailKeys: keys }
+        ? { lastEmailAt: isoSecond(), lastEmailKeys: keys }
         : {}),
     }, { merge: true });
   }
@@ -281,4 +279,4 @@ async function runHealthCheck({ mode = "scheduled" } = {}) {
   };
 }
 
-module.exports = { runHealthCheck, buildReport, mapWithLimit, runId, REPORTS, STATE };
+module.exports = { runHealthCheck, buildReport, REPORTS };

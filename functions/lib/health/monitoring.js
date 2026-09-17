@@ -11,12 +11,9 @@
 // midnight.
 
 const { apiGet } = require("./auth");
+const { isoSecond } = require("./config");
 
 const MONITORING = "https://monitoring.googleapis.com/v3";
-
-function isoSecond(date) {
-  return date.toISOString().replace(/\.\d{3}Z$/, "Z");
-}
 
 // History baseline: `days` complete UTC days, ending at today's UTC
 // midnight — i.e. not including any part of the rolling window below, so a

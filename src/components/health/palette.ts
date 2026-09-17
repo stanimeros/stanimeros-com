@@ -28,16 +28,6 @@ export const LEVEL_LABEL: Record<Level, string> = {
   ok: "Healthy",
 }
 
-/** Sequential (all quantity charts), light -> dark. */
-export const HEALTH_SEQUENTIAL_VARS = [
-  "var(--hc-seq-1)",
-  "var(--hc-seq-2)",
-  "var(--hc-seq-3)",
-  "var(--hc-seq-4)",
-  "var(--hc-seq-5)",
-  "var(--hc-seq-6)",
-  "var(--hc-seq-7)",
-]
 
 /** Categorical (C5/C6 only), fixed slot order — never cycled beyond 4. */
 export const HEALTH_CATEGORICAL_VARS = [

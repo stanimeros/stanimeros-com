@@ -171,8 +171,5 @@ module.exports = {
   parseUserManagedKeys,
   parseBroadBindings,
   parseUnrestrictedKeys,
-  listServiceAccounts,
-  listBroadServiceAccountBindings,
-  listUnrestrictedApiKeys,
   collectIam,
 };

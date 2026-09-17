@@ -11,6 +11,8 @@
 // less visibility is not good news. Those keys go to `unknown` instead, and
 // `unknown` never sets `resolvedAt`.
 
+const { isoSecond } = require("./config");
+
 const FINDINGS = "health_findings";
 
 // How many deploy timestamps a single finding document keeps. This is a
@@ -39,10 +41,6 @@ const ENTITY_FINDING_KINDS = new Set([
 // diurnal pattern -- generous enough that a "weekday only" finding doesn't
 // look like a fresh lifecycle every Monday.
 const REOPEN_WINDOW_MS = 48 * 60 * 60 * 1000;
-
-function isoNow(now) {
-  return now.toISOString().replace(/\.\d{3}Z$/, "Z");
-}
 
 /**
  * Finding key -> Firestore document id.
@@ -196,7 +194,7 @@ function computeResolvedAfterDeploy(existing, deploysByProject, nowIso) {
  * @returns {{ key: string, data: any }[]} documents that changed and need writing
  */
 function planLifecycleUpdate(report, existingByKey, now) {
-  const nowIso = isoNow(now);
+  const nowIso = isoSecond(now);
   const checkedProjectIds = new Set(report.projects.map((p) => p.project));
   const deploysByProject = buildDeploysByProject(report);
 
@@ -405,9 +403,7 @@ async function updateLifecycle(db, report, now = new Date()) {
  * bounded-batch shape as `pruneOldReports` in index.js.
  */
 async function pruneLifecycle(db, retentionDays, now = new Date()) {
-  const cutoff = new Date(now.getTime() - retentionDays * 86400000)
-    .toISOString()
-    .replace(/\.\d{3}Z$/, "Z");
+  const cutoff = isoSecond(new Date(now.getTime() - retentionDays * 86400000));
 
   let snap;
   try {
@@ -443,5 +439,4 @@ module.exports = {
   buildDeploysByProject,
   advanceDeployHistory,
   computeResolvedAfterDeploy,
-  entityNameFromKey,
 };

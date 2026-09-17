@@ -9,6 +9,11 @@
 
 const { BILLING_ACCOUNT } = require("./config");
 
+// Multi-region of the billing-export dataset. Must match the dataset, not the
+// functions' region -- a cross-location query is a "table not found", not a
+// helpful error.
+const BILLING_LOCATION = process.env.HEALTH_BILLING_LOCATION || "EU";
+
 // Identifiers that end up interpolated into SQL (dataset/table can't be bound
 // as query parameters in BigQuery's REST API). Whitelisting before splicing
 // them into the query string is what keeps this from being a SQL-injection
@@ -22,10 +27,17 @@ function assertIdentifier(value, label) {
   return value;
 }
 
-// Standard export table naming: gcp_billing_export_v1_<billing account,
+// Export table naming: gcp_billing_export_<kind>_v1_<billing account,
 // hyphens -> underscores>. https://cloud.google.com/billing/docs/how-to/export-data-bigquery-setup
+//
+// This estate has the DETAILED ("Detailed usage cost") export enabled, whose
+// table carries the `_resource_` infix. The standard export was never turned
+// on, so `gcp_billing_export_v1_...` does not exist and every query against
+// it 404s. The detailed table's schema is a superset of the standard one --
+// every field the queries below select is present -- so pointing at it needs
+// no query changes.
 function defaultTableId() {
-  return `gcp_billing_export_v1_${BILLING_ACCOUNT.replace(/-/g, "_")}`;
+  return `gcp_billing_export_resource_v1_${BILLING_ACCOUNT.replace(/-/g, "_")}`;
 }
 
 function round2(n) {
@@ -39,7 +51,7 @@ function toNumber(value) {
 
 // Runs a BigQuery SQL query via the REST API (no client-library dependency)
 // and returns the row array, each row already zipped field-name -> value.
-async function runQuery(query, queryParameters, { token, datasetProject, timeoutMs = 60000 }) {
+async function runQuery(query, queryParameters, { token, datasetProject, location = BILLING_LOCATION, timeoutMs = 60000 }) {
   const url = `https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(datasetProject)}/queries`;
   const res = await fetch(url, {
     method: "POST",
@@ -53,6 +65,10 @@ async function runQuery(query, queryParameters, { token, datasetProject, timeout
       timeoutMs,
       parameterMode: "NAMED",
       queryParameters,
+      // The export dataset lives in EU. Without an explicit location
+      // BigQuery infers one from the request context, which resolves to US
+      // and 404s the table even when the name is right.
+      location,
     }),
     signal: AbortSignal.timeout(timeoutMs + 15000),
   });
@@ -84,6 +100,22 @@ function isExportNotReady(err) {
   return false;
 }
 
+// The dataset/table identifiers can't be bound as query parameters, so every
+// builder must whitelist them before splicing. Keeping that in one place is
+// what stops a future 4th builder from copy-pasting the guard wrong -- this
+// is the module's only SQL-injection defence.
+function tableRef({ datasetProject, datasetId, tableId }) {
+  assertIdentifier(datasetProject, "datasetProject");
+  assertIdentifier(datasetId, "datasetId");
+  assertIdentifier(tableId, "tableId");
+  return `\`${datasetProject}.${datasetId}.${tableId}\``;
+}
+
+// Gross cost plus credits (credits are negative), the billing export's
+// standard "net cost" expression. Shared so the windowed per-project query
+// and the account total can never disagree about what "cost" means.
+const COST_EXPR = "SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0))";
+
 function nullResult(projectIds) {
   const out = {};
   for (const id of projectIds) out[id] = null;
@@ -97,17 +129,14 @@ function nullResult(projectIds) {
 // tables); the standard detailed billing export is partitioned by
 // usage_start_time, so filtering on it is what actually prunes partitions
 // instead of scanning the whole table.
-function buildQuery({ datasetProject, datasetId, tableId }) {
-  assertIdentifier(datasetProject, "datasetProject");
-  assertIdentifier(datasetId, "datasetId");
-  assertIdentifier(tableId, "tableId");
-  const table = `\`${datasetProject}.${datasetId}.${tableId}\``;
+function buildQuery(table_) {
+  const table = tableRef(table_);
   return `
     SELECT
       project.id AS project_id,
       service.description AS service,
       DATE(usage_start_time) AS day,
-      SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)) AS cost,
+      ${COST_EXPR} AS cost,
       ANY_VALUE(currency) AS currency
     FROM ${table}
     WHERE usage_start_time >= @windowStart
@@ -123,24 +152,17 @@ function buildQuery({ datasetProject, datasetId, tableId }) {
 // because the export died six weeks ago" (plan.md A1) -- a stopped export
 // still answers every windowed query with zero rows, identically to a
 // Spark project that genuinely has no spend.
-function buildLatestDayQuery({ datasetProject, datasetId, tableId }) {
-  assertIdentifier(datasetProject, "datasetProject");
-  assertIdentifier(datasetId, "datasetId");
-  assertIdentifier(tableId, "tableId");
-  const table = `\`${datasetProject}.${datasetId}.${tableId}\``;
-  return `SELECT MAX(DATE(usage_start_time)) AS day FROM ${table}`;
+function buildLatestDayQuery(table_) {
+  return `SELECT MAX(DATE(usage_start_time)) AS day FROM ${tableRef(table_)}`;
 }
 
 // Same shape, no per-service/day breakdown, no project filter -- used for
 // the report-level billing-account total.
-function buildTotalQuery({ datasetProject, datasetId, tableId }) {
-  assertIdentifier(datasetProject, "datasetProject");
-  assertIdentifier(datasetId, "datasetId");
-  assertIdentifier(tableId, "tableId");
-  const table = `\`${datasetProject}.${datasetId}.${tableId}\``;
+function buildTotalQuery(table_) {
+  const table = tableRef(table_);
   return `
     SELECT
-      SUM(cost) + SUM(IFNULL((SELECT SUM(c.amount) FROM UNNEST(credits) AS c), 0)) AS cost,
+      ${COST_EXPR} AS cost,
       ANY_VALUE(currency) AS currency
     FROM ${table}
     WHERE usage_start_time >= @windowStart
@@ -336,4 +358,7 @@ module.exports = {
   fetchBillingTotal,
   fetchCostDataThrough,
   defaultTableId,
+  buildQuery,
+  buildLatestDayQuery,
+  buildTotalQuery,
 };

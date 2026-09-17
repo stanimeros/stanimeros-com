@@ -118,4 +118,4 @@ async function apiGet(url, token, { timeoutMs = 90000, method = "GET", body } = 
   throw lastErr;
 }
 
-module.exports = { getAccessToken, apiGet, SCOPES };
+module.exports = { getAccessToken, apiGet };

@@ -37,7 +37,6 @@
   /* Neutral chip behind a status pill — the one place a "tint" survives
      (mockup decision 2): never colored, just a wash the status text/dot
      sits on. */
-  --hc-wash: #f4f4f4;
 
   /* Sequential (all quantity charts — Series, the Columns findings line),
      light -> dark grey. No hue: these are quantity marks, not severity, and
@@ -72,7 +71,6 @@
     --hc-cat-4: #c98500;
     /* Lighter grey so it still reads against a dark card. */
     --hc-low: #9a9a9a;
-    --hc-wash: rgba(255, 255, 255, 0.06);
 
     --hc-seq-1: #3a3a3a;
     --hc-seq-2: #4e4e4e;
@@ -94,7 +92,6 @@
   --hc-cat-3: #199e70;
   --hc-cat-4: #c98500;
   --hc-low: #9a9a9a;
-  --hc-wash: rgba(255, 255, 255, 0.06);
 
   --hc-seq-1: #3a3a3a;
   --hc-seq-2: #4e4e4e;

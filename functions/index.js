@@ -9,6 +9,7 @@ const { ai, tools, buildSystemInstruction, MODEL } = require("./lib/gemini");
 const { checkAvailability, createBooking } = require("./lib/calendar");
 const { runHealthCheck, buildReport, REPORTS } = require("./lib/health");
 const { FINDINGS, docIdFor } = require("./lib/health/lifecycle");
+const { isoSecond } = require("./lib/health/config");
 const {
   appendMessage,
   getHistory,
@@ -445,7 +446,7 @@ exports.markHealthSeen = onCall({ enforceAppCheck: true }, async (request) => {
   const db = admin.firestore();
   await db.collection("health_seen").doc(uid).set({
     lastViewedRunId: runId,
-    lastViewedAt: new Date().toISOString().replace(/\.\d{3}Z$/, "Z"),
+    lastViewedAt: isoSecond(),
   });
   return { ok: true };
 });

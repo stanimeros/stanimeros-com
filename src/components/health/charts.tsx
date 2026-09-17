@@ -4,7 +4,7 @@
  * dependency.
  *
  * The one law every primitive here follows: color means severity and
- * nothing else. `StatusBand`, `Columns` and `ProportionBar` use the reserved
+ * nothing else. `StatusBand` and `Columns` use the reserved
  * status colors because they *are* severity charts. `Series` (quantity) is
  * always monochrome sequential blue. `StackedBar` is the only primitive that
  * may use the categorical palette, and only for identity data (error kinds,
@@ -36,16 +36,6 @@ export type { Level } from "./palette"
 // Slot assignment for StackedBar's categorical colors lives in ./palette —
 // import `buildCategoricalSlotMap` and `toStackedBarSegments` from there
 // directly (kept out of this file so it exports components only).
-
-/** Fill for a status-colored segment carries direct-labeled text; pick a
- * readable text color per fill rather than assuming white (plan.md notes
- * warning is sub-3:1 on white). */
-const LEVEL_FILL_TEXT_CLASS: Record<Level, string> = {
-  critical: "text-white",
-  warn: "text-black",
-  low: "text-white",
-  ok: "text-white",
-}
 
 /** Shared hover/focus tooltip: a visually hidden label that appears above
  * its trigger on hover or focus-within, via CSS only (no JS positioning
@@ -265,61 +255,6 @@ export function Columns({
 }
 
 /* ------------------------------------------------------------------ */
-/* C3 — ProportionBar                                                   */
-/* ------------------------------------------------------------------ */
-
-export interface ProportionBarSegment {
-  level: Level
-  count: number
-}
-
-/**
- * One horizontal proportional bar, critical | warn | ok, direct-labeled
- * segments, 2px gaps between fills.
- */
-export function ProportionBar({
-  segments,
-  height = 28,
-  className,
-}: {
-  segments: ProportionBarSegment[]
-  height?: number
-  className?: string
-}) {
-  const order: Level[] = ["critical", "warn", "low", "ok"]
-  const byLevel = new Map(segments.map((s) => [s.level, s.count]))
-  const ordered = order.map((level) => ({ level, count: byLevel.get(level) ?? 0 }))
-  const total = ordered.reduce((sum, s) => sum + s.count, 0)
-  if (total === 0) return null
-
-  return (
-    <div
-      role="img"
-      aria-label={ordered.map((s) => `${LEVEL_LABEL[s.level]}: ${s.count}`).join(", ")}
-      className={`flex w-full overflow-hidden rounded-md ${className ?? ""}`}
-      style={{ height, gap: 2 }}
-    >
-      {ordered
-        .filter((s) => s.count > 0)
-        .map((s) => {
-          const pct = (s.count / total) * 100
-          const showLabel = pct >= 12
-          return (
-            <div
-              key={s.level}
-              className={`flex items-center justify-center overflow-hidden text-[11px] font-medium ${LEVEL_FILL_TEXT_CLASS[s.level]}`}
-              style={{ width: `${pct}%`, backgroundColor: HEALTH_STATUS_VAR[s.level] }}
-              title={`${LEVEL_LABEL[s.level]}: ${s.count}`}
-            >
-              {showLabel ? s.count : null}
-            </div>
-          )
-        })}
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
 /* C4 / C9 — Series                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -468,6 +403,10 @@ export function Series({
             aria-label={`${p.day}: ${format(p.value, unit)}`}
             onFocus={() => setHover(i)}
             onMouseEnter={() => setHover(i)}
+            // A transparent hit target with the browser default outline
+            // suppressed leaves a keyboard user tabbing blind: the readout
+            // changes but nothing shows which point it belongs to.
+            className="outline-none focus-visible:stroke-[var(--hc-focus,currentColor)] focus-visible:[stroke-width:1.5px]"
           />
         ))}
       </svg>
