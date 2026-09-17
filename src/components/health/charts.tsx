@@ -29,12 +29,22 @@ import type { Level } from "./types"
  * its trigger on hover or focus-within, via CSS only (no JS positioning
  * needed for the many small marks in the div-based charts). `groupName`
  * must be a unique Tailwind arbitrary group name per chart so adjacent
- * marks don't cross-trigger each other's tooltip. */
+ * marks don't cross-trigger each other's tooltip.
+ *
+ * `hidden` (not just `opacity-0`) when idle: an absolutely positioned,
+ * `w-max max-w-[240px]` box centered under a 4px-wide bar routinely lands
+ * partly off-screen near either edge of the band. `opacity-0` still lays
+ * that out and left `document.documentElement.scrollWidth` wider than the
+ * viewport on every load — 90 of these, mostly invisible, were the entire
+ * source of the phantom horizontal scroll/black-strip-at-the-edge on
+ * mobile. `display:none` removes a hidden one from layout entirely, so
+ * only the one actually being hovered or focused can ever push past the
+ * edge, and only while it's shown. */
 function MarkTooltip({ groupName, text }: { groupName: string; text: string }) {
   return (
     <span
       role="tooltip"
-      className={`pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 w-max max-w-[240px] -translate-x-1/2 whitespace-normal rounded-md border border-border bg-popover px-2 py-1 text-[11px] leading-snug text-popover-foreground opacity-0 shadow-md group-hover/${groupName}:opacity-100 group-focus-within/${groupName}:opacity-100`}
+      className={`pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 hidden w-max max-w-[240px] -translate-x-1/2 whitespace-normal rounded-md border border-border bg-popover px-2 py-1 text-[11px] leading-snug text-popover-foreground shadow-md group-hover/${groupName}:block group-focus-within/${groupName}:block`}
     >
       {text}
     </span>

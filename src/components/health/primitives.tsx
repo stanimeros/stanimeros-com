@@ -207,7 +207,7 @@ export function FindingsTable({
               its own column -- at phone width, four fixed columns left
               Message a sliver too narrow to read; dropping one column there
               is worth more than keeping all four legible nowhere. */}
-          <col className="w-28 sm:w-32" />
+          <col className="w-32" />
           <col className="hidden sm:table-column sm:w-36" />
           <col />
           <col className="w-10 sm:w-12" />
@@ -239,19 +239,41 @@ export function FindingsTable({
                     }
                   }}
                 >
-                  <td className="py-1.5 pr-2">
+                  <td className="overflow-hidden py-1.5 pr-2">
                     <span className="flex min-w-0 items-center gap-1">
                       <ExpandArrow open={expanded} className="size-3 shrink-0" />
                       {finding.projectName && (
-                        <Badge variant="outline" className="h-4 shrink-0 truncate px-1 text-[10px]">
-                          {finding.projectName}
+                        // The Badge component itself bakes in `shrink-0
+                        // w-fit whitespace-nowrap` (badge-variants.ts), which
+                        // silently defeats a plain `truncate` -- fit-content
+                        // sizing means it's never actually narrower than its
+                        // text. `min-w-0 shrink` overrides the shrink lock,
+                        // and the explicit `max-w` gives it something to
+                        // shrink *to*, otherwise a long project name pushes
+                        // the Kind span (and the row) past the column and
+                        // into whatever's next, invisibly under it.
+                        //
+                        // The name itself is wrapped in its own `block`
+                        // span rather than truncating the Badge directly --
+                        // Badge is `inline-flex`, and `text-overflow:
+                        // ellipsis` doesn't apply inside a flex container's
+                        // own box, so the bare text just got clipped
+                        // mid-string with no "…" (e.g. a project ending up
+                        // as "ytransfer-p"). A block-level child is what
+                        // ellipsis actually needs.
+                        <Badge variant="outline" className="h-4 max-w-14 min-w-0 shrink justify-start px-1 text-[10px] sm:max-w-24">
+                          <span className="block truncate">{finding.projectName}</span>
                         </Badge>
                       )}
                       {/* Kind's own column is hidden below `sm` (see
                           colgroup) -- shown here instead, on the same line,
                           so the row still names it on a phone without
-                          growing taller than the other cells. */}
-                      <span className={`truncate font-mono text-[10px] font-medium sm:hidden ${LEVEL_TEXT[finding.level]}`}>
+                          growing taller than the other cells. Capped and
+                          shrink-proof for the same reason as the Badge
+                          above: fixed width, guaranteed to stay on-screen. */}
+                      <span
+                        className={`max-w-10 shrink-0 truncate font-mono text-[10px] font-medium sm:hidden ${LEVEL_TEXT[finding.level]}`}
+                      >
                         {finding.kind}
                       </span>
                     </span>
