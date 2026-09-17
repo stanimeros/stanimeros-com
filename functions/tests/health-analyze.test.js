@@ -542,7 +542,7 @@ test("analyzeIam is a no-op when iam is null (e.g. the grant hasn't rolled out t
   assert.equal(result.findings.length, 0);
 });
 
-test("analyzeIam flags a user-managed service-account key as low (hygiene) under the age threshold", () => {
+test("analyzeIam flags a user-managed service-account key as low (hygiene) regardless of age", () => {
   const iam = {
     serviceAccounts: [
       { email: "sa@proj.iam.gserviceaccount.com", userManagedKeys: [{ name: "k1", validAfterTime: new Date().toISOString() }] },
@@ -557,8 +557,8 @@ test("analyzeIam flags a user-managed service-account key as low (hygiene) under
   assert.equal(finding.key, "proj:sa-key:sa@proj.iam.gserviceaccount.com:k1");
 });
 
-test("analyzeIam escalates a service-account key to critical once it's older than saKeyCriticalDays", () => {
-  const old = new Date(Date.now() - 400 * 86400000).toISOString(); // > default 365d
+test("analyzeIam keeps a service-account key at low even when it's very old -- age shows in the text, not the severity", () => {
+  const old = new Date(Date.now() - 400 * 86400000).toISOString();
   const iam = {
     serviceAccounts: [{ email: "sa@proj.iam.gserviceaccount.com", userManagedKeys: [{ name: "k1", validAfterTime: old }] }],
     broadBindings: [],
@@ -566,10 +566,11 @@ test("analyzeIam escalates a service-account key to critical once it's older tha
   };
   const result = analyzeProject(baseArgs({ iam }));
   const finding = result.findings.find((f) => f.kind === "sa-key");
-  assert.equal(finding.level, "critical");
+  assert.equal(finding.level, "low");
+  assert.match(finding.text, /400d old/);
 });
 
-test("analyzeIam flags a custom service account bound to roles/owner or roles/editor as critical", () => {
+test("analyzeIam flags a custom service account bound to roles/owner or roles/editor as low, same as GCP's own default agent", () => {
   const iam = {
     serviceAccounts: [],
     broadBindings: [{ role: "roles/editor", email: "sa@proj.iam.gserviceaccount.com", isDefaultAgent: false }],
@@ -579,10 +580,11 @@ test("analyzeIam flags a custom service account bound to roles/owner or roles/ed
   const finding = result.findings.find((f) => f.kind === "broad-role");
   assert.ok(finding, "expected a broad-role finding");
   assert.equal(finding.key, "proj:broad-role:sa@proj.iam.gserviceaccount.com:roles/editor");
-  assert.equal(finding.level, "critical");
+  assert.equal(finding.level, "low");
+  assert.match(finding.text, /custom account/);
 });
 
-test("analyzeIam flags GCP's own default agent holding a broad role as only low (hygiene, not an incident)", () => {
+test("analyzeIam flags GCP's own default agent holding a broad role as low too, with different text", () => {
   const iam = {
     serviceAccounts: [],
     broadBindings: [{ role: "roles/editor", email: "proj@appspot.gserviceaccount.com", isDefaultAgent: true }],
@@ -619,9 +621,11 @@ test("LEVEL_BY_KIND holds every flat-severity kind, and none of the graduated on
   assert.equal(LEVEL_BY_KIND.api_key_warning, "low");
   assert.equal(LEVEL_BY_KIND.service_account_warning, "low");
   assert.equal(LEVEL_BY_KIND["api-key"], "low");
+  assert.equal(LEVEL_BY_KIND["sa-key"], "low");
+  assert.equal(LEVEL_BY_KIND["broad-role"], "low");
   // Graduated kinds decide their own level in analyze.js, by design -- see
   // the comment on LEVEL_BY_KIND in config.js.
-  for (const kind of ["spike", "failures", "quota", "errors", "sa-key", "broad-role"]) {
+  for (const kind of ["spike", "failures", "quota", "errors"]) {
     assert.equal(kind in LEVEL_BY_KIND, false, `${kind} is graduated by magnitude, not a flat lookup`);
   }
 });
@@ -647,11 +651,14 @@ test("a project whose only findings are low gets status low, not warn and not ok
 
 test("a project with any critical finding gets status critical, even alongside warns", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
-  const iam = {
-    serviceAccounts: [],
-    broadBindings: [{ role: "roles/editor", email: "sa@proj.iam.gserviceaccount.com", isDefaultAgent: false }],
+  const log = {
+    count: 1,
+    truncated: false,
+    kinds: {},
+    sources: {},
+    top: [{ source: "function:x", message: "boom", count: 1 }],
   };
-  const result = analyzeProject(spikeArgs(spec, 100, 350, { iam })); // 3.5x -> warn spike, plus a critical broad-role
+  const result = analyzeProject(spikeArgs(spec, 100, 350, { log })); // 3.5x -> warn spike, plus a critical error
   assert.equal(result.status, "critical");
 });
 

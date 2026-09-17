@@ -112,7 +112,6 @@ const DEFAULTS = {
   freeTierWarn: 0.8,    // warn at 80% of a Spark daily allowance
   baselineDays: 14,
   logHours: 48,
-  saKeyCriticalDays: 365,  // a downloadable SA key older than this is critical, not just a warn
 };
 
 // Project-level roles that turn a leaked service-account key into full
@@ -132,16 +131,21 @@ const LEVEL_ORDER = ["critical", "warn", "low", "ok"];
 // addition here.
 //
 // A handful of kinds are deliberately *not* here because they're graduated
-// by magnitude rather than flat: failures/quota/errors escalate on a
-// share or count against a cfg.* threshold; sa-key escalates on key
-// age (cfg.saKeyCriticalDays); broad-role depends on whether the account is
-// GCP's own default agent (iam.js's isDefaultAgent) or a hand-created one.
-// spike is graduated too, but only ever to warn -- usage running hot, on its
-// own, is never evidence of a real failure, however large the ratio; it stays
-// out of this table only because analyze.js decides it next to spikeRatio,
-// not because it can reach critical. Those stay computed in analyze.js, next
-// to the threshold they compare against -- putting only half of a graduated
-// decision in a table would be more confusing than keeping it whole.
+// by magnitude rather than flat: failures/quota/errors escalate on a share
+// or count against a cfg.* threshold. spike is graduated too, but only ever
+// to warn -- usage running hot, on its own, is never evidence of a real
+// failure, however large the ratio; it stays out of this table only because
+// analyze.js decides it next to spikeRatio, not because it can reach
+// critical. Those stay computed in analyze.js, next to the threshold they
+// compare against -- putting only half of a graduated decision in a table
+// would be more confusing than keeping it whole.
+//
+// sa-key and broad-role used to graduate too (key age, and whether the
+// account was GCP's own default agent) -- now flat `low` regardless, same
+// reasoning as api_key_warning/service_account_warning below: a downloadable
+// key or a broad role is estate hygiene worth listing, not by itself
+// evidence something is currently broken, however old or however custom the
+// account.
 //
 // Three tiers, not two: `critical` is a real failure, `warn` is something
 // off but nothing failing, `low` is estate hygiene that's true but not an
@@ -168,6 +172,8 @@ const LEVEL_BY_KIND = {
   api_key_warning: "low",
   service_account_warning: "low",
   "api-key": "low",
+  "sa-key": "low",
+  "broad-role": "low",
 };
 
 // Per-project threshold overrides, merged over DEFAULTS. Phase 1 of the plan

@@ -301,13 +301,12 @@ function analyzeIam(projectId, iam, cfg, findings) {
     for (const key of sa.userManagedKeys || []) {
       const age = daysSince(key.validAfterTime);
       const ageText = age === null ? "" : ` (${Math.round(age)}d old)`;
-      // A fresh downloadable key is ordinary estate hygiene (low); one old
-      // enough to have plausibly been forgotten about (cfg.saKeyCriticalDays)
-      // is a real risk (critical). Graduated by age, so it isn't in
-      // LEVEL_BY_KIND -- see the comment there.
+      // Estate hygiene, not an incident -- flat `low` regardless of age
+      // (LEVEL_BY_KIND). The age still shows in the text; it just no longer
+      // decides severity.
       findings.push({
         key: findingKey(projectId, "sa-key", `${sa.email}:${key.name}`),
-        level: age !== null && age >= cfg.saKeyCriticalDays ? "critical" : "low",
+        level: LEVEL_BY_KIND["sa-key"],
         kind: "sa-key",
         text: `${sa.email} has a downloadable key${ageText} — rotate to keyless auth (ADC/workload identity) if possible`,
       });
@@ -315,18 +314,16 @@ function analyzeIam(projectId, iam, cfg, findings) {
   }
 
   for (const binding of iam.broadBindings || []) {
-    // GCP's own default agent holding a broad role is near-universal and
-    // usually not the mistake it looks like (see iam.js's DEFAULT_AGENT_RE
-    // comment) -- hygiene worth listing, not an incident, hence `low`. A
-    // hand-created service account with the same role is a real, specific
-    // risk: whoever set it up meant to grant less. Graduated on
-    // isDefaultAgent, so it isn't in LEVEL_BY_KIND -- see the comment there.
+    // Estate hygiene, not an incident -- flat `low` regardless of whether
+    // it's GCP's own default agent or a hand-created account (LEVEL_BY_KIND).
+    // Worth a different text either way (see iam.js's DEFAULT_AGENT_RE
+    // comment), just not a different severity.
     const text = binding.isDefaultAgent
       ? `${binding.email} — GCP's default account for this project — still holds ${binding.role}; narrowing it is optional but a well-known best practice`
       : `${binding.email} holds ${binding.role} on the project — this looks like a custom account with full project access, worth reviewing`;
     findings.push({
       key: findingKey(projectId, "broad-role", `${binding.email}:${binding.role}`),
-      level: binding.isDefaultAgent ? "low" : "critical",
+      level: LEVEL_BY_KIND["broad-role"],
       kind: "broad-role",
       text,
     });

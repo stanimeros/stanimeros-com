@@ -265,27 +265,27 @@ tier, `low`, separates them out. Ordering, worst first:
 hard-coding a comparison).
 
 - **`critical`** — a real failure. `errors` (any ERROR-severity log entry,
-  `cfg.criticalErrors`), `quota_exhausted`, `billing`, `deploy_failure`,
-  `function errors` / `run errors`, and a `sa-key` older than
-  `cfg.saKeyCriticalDays`.
+  `cfg.criticalErrors`), `quota_exhausted`, `billing`, `deploy_failure`, and
+  `function errors` / `run errors`.
 - **`warn`** — something is off, but nothing is currently failing. `spike`,
   `stall`, `failures`, `function silent` / `run silent`,
   `function spike` / `run spike`, `missing_index`, `rules_denied`.
 - **`low`** — estate hygiene: true, but not an incident, and often not
   fixable today. `api_key_warning` / `api-key`, `service_account_warning`,
-  `broad-role` on GCP's own default agent (`iam.js`'s `isDefaultAgent`), and
-  a `sa-key` younger than `cfg.saKeyCriticalDays`.
+  `sa-key` (a downloadable key, any age), and `broad-role` (any account,
+  GCP's own default agent or hand-created).
 
 The kind -> level mapping lives in one place, `LEVEL_BY_KIND` in
 `functions/lib/health/config.js`, for every kind whose severity doesn't
 depend on the number behind it -- adding a new flat-severity kind is a
-one-line addition there. `failures`/`quota`/`errors` (graduated by
-share/count, up to critical) and `sa-key`/`broad-role` (graduated by key age /
-default-agent-ness) stay computed in `analyze.js`, next to the threshold or
-flag they key off of. `spike` is graduated too (on ratio, against
-`cfg.spikeRatio`) but only within `warn` -- usage running hot is never on its
-own evidence of a real failure, so it can't escalate to critical no matter
-the ratio.
+one-line addition there. `sa-key`/`broad-role` are flat `low` there like
+everything else in that tier; their text still varies with key age /
+default-agent-ness (see `iam.js`'s `isDefaultAgent`), just not their
+severity. `failures`/`quota`/`errors` (graduated by share/count, up to
+critical) stay computed in `analyze.js`, next to the threshold they key off
+of. `spike` is graduated too (on ratio, against `cfg.spikeRatio`) but only
+within `warn` -- usage running hot is never on its own evidence of a real
+failure, so it can't escalate to critical no matter the ratio.
 
 A project's `status` is the worst level among its own findings
 (`worstLevel()`) -- a project whose worst finding is `low` gets status
