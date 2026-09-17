@@ -1,6 +1,7 @@
 // One severity, estate-wide and flat, the project reduced to a badge. The
-// Critical tab additionally carries the raw Cloud Logging figures, since
-// that's the only place the findings-vs-log-lines distinction matters.
+// Critical tab additionally carries the raw Cloud Logging figures (inside its
+// card, under the header), since that's the only place the
+// findings-vs-log-lines distinction matters.
 
 import type { ReactNode } from "react"
 import { CheckCircle2 } from "lucide-react"
@@ -66,13 +67,6 @@ export function SeverityTab({
 
   return (
     <div className="space-y-3">
-      {level === "critical" && logLines > 0 && (
-        <p className="text-xs text-muted-foreground">
-          {logLines.toLocaleString("en-US")} error log line{logLines === 1 ? "" : "s"} in the window
-          {truncated ? " (hit the 1,000-entry cap — the real number is higher)" : ""}, grouped into the findings below.
-        </p>
-      )}
-
       {active.length === 0 ? (
         <Card className="gap-1 px-4 py-3 text-sm">
           <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.ok}`}>
@@ -91,6 +85,12 @@ export function SeverityTab({
               getText={() => findingsToMarkdown(`${LEVEL_LABEL[level]} (${headerCount})`, active, lifecycle)}
             />
           </div>
+          {level === "critical" && logLines > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {logLines.toLocaleString("en-US")} error log line{logLines === 1 ? "" : "s"} in the window
+              {truncated ? " (hit the 1,000-entry cap — the real number is higher)" : ""}, grouped into the findings below.
+            </p>
+          )}
           <FindingsTable findings={active} lifecycle={lifecycle} onAck={onAck} />
         </Card>
       )}
