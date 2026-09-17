@@ -21,6 +21,7 @@
  * baseline rule in `Series`, where dashing means "reference value".
  */
 import { useRef, useState } from "react"
+import { exactTime } from "./format"
 import { HEALTH_STATUS_VAR, LEVEL_LABEL } from "./levels"
 import type { Level } from "./types"
 
@@ -119,7 +120,7 @@ export function StatusBand({
         />
       ))}
       {runs.map((run) => {
-        const exact = new Date(run.generated).toLocaleString()
+        const exact = exactTime(run.generated)
         const countsText = run.counts
           // The page's words, not the internal level names (warn/ok).
           ? ` · ${run.counts.critical ?? 0} critical, ${run.counts.warn ?? 0} warnings, ${run.counts.low ?? 0} low, ${run.counts.ok ?? 0} healthy`

@@ -228,6 +228,24 @@ function isoSecond(date = new Date()) {
   return date.toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+// Display-only: European day/month order, 24h clock, Athens wall time -- for
+// timestamps shown to a human (the email header, the dashboard). Never used
+// for the `isoSecond` values findings/lifecycle are stored and compared as.
+const ATHENS_DISPLAY_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Europe/Athens",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function formatAthens(isoOrDate) {
+  const date = isoOrDate instanceof Date ? isoOrDate : new Date(isoOrDate);
+  return ATHENS_DISPLAY_FORMAT.format(date).replace(",", "");
+}
+
 function thresholdsFor(projectId) {
   return { ...DEFAULTS, ...(OVERRIDES[projectId] || {}) };
 }
@@ -248,4 +266,5 @@ module.exports = {
   thresholdsFor,
   failureThresholdsFor,
   isoSecond,
+  formatAthens,
 };

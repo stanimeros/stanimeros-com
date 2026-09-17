@@ -6,6 +6,7 @@
 // ongoing problem stays visible on the dashboard, silently.
 
 const { sendOwnerEmail, escapeHtml } = require("../mailer");
+const { formatAthens } = require("./config");
 
 const LEVEL_COLOR = { critical: "#b91c1c", warn: "#b45309", low: "#6b7280" };
 
@@ -74,7 +75,7 @@ function renderEmail(report, keys, dashboardUrl, ackedKeys = []) {
     `<p style="margin:0 0 16px;color:#666;font-size:13px">`,
     // Explicitly "projects": these are project counts sitting directly under
     // a finding count, which read as more findings.
-    `${escapeHtml(report.generated)} · ${report.counts.total} projects — ${report.counts.critical} critical, `,
+    `${escapeHtml(formatAthens(report.generated))} · ${report.counts.total} projects — ${report.counts.critical} critical, `,
     `${report.counts.warn} warnings, ${report.counts.low} low, ${report.counts.ok} healthy</p>`,
   ];
 
@@ -84,11 +85,9 @@ function renderEmail(report, keys, dashboardUrl, ackedKeys = []) {
       `<span style="font-weight:400;color:#888">${escapeHtml(project.project)}</span></h3>`,
       `<ul style="margin:0;padding-left:18px">`
     );
-    for (const finding of project.findings.filter((f) => !acked.has(f.key))) {
+    for (const finding of project.findings.filter((f) => !acked.has(f.key) && f.level !== "low")) {
       const color = LEVEL_COLOR[finding.level] || "#333";
-      const tag = isNew(finding)
-        ? `<strong style="color:${color}">NEW</strong> `
-        : `<span style="color:#999">ongoing</span> `;
+      const tag = isNew(finding) ? "" : `<span style="color:#999">ongoing</span> `;
       parts.push(
         `<li style="margin:3px 0">${tag}<span style="color:${color}">${escapeHtml(finding.kind)}</span> — ${escapeHtml(finding.text)}</li>`
       );

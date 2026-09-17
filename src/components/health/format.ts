@@ -85,10 +85,22 @@ export function duration(fromIso: string, toIso?: string | null) {
   return `${Math.round(hours / 24)}d`
 }
 
-/** Exact local time for a title attribute — `timeAgo` rounds too hard to
- *  correlate a finding with a deploy. */
+// European day/month order, 24h clock -- but the viewer's own local timezone
+// (no `timeZone` override), so this reads as "when that was for me right
+// now" rather than a fixed Athens time.
+const EXACT_TIME_FORMAT = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+})
+
+/** Exact local-time timestamp for a title attribute — `timeAgo` rounds too
+ *  hard to correlate a finding with a deploy. */
 export function exactTime(iso: string) {
-  return new Date(iso).toLocaleString()
+  return EXACT_TIME_FORMAT.format(new Date(iso)).replace(",", "")
 }
 
 /** Renders a findings list as Markdown, meant to be pasted straight into an

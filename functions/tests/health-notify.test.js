@@ -51,13 +51,13 @@ test("newKeys treats an empty or missing previousKeys as nothing seen before", (
   assert.deepEqual(newKeys(report(projects), undefined), ["proj:spike:firestore.reads"]);
 });
 
-test("renderEmail marks a new finding NEW and a pre-existing one ongoing", () => {
+test("renderEmail marks a pre-existing finding ongoing and leaves new ones untagged", () => {
   const newFinding = finding("proj:spike:firestore.reads", { text: "reads spiked" });
   const oldFinding = finding("proj:stall:firestore.writes", { text: "writes stalled" });
   const projects = [{ project: "proj", name: "Proj", findings: [newFinding, oldFinding], errorTruncated: false }];
   const html = renderEmail(report(projects), ["proj:spike:firestore.reads"], null);
 
-  assert.match(html, /NEW[\s\S]*reads spiked/);
+  assert.ok(!html.includes("NEW"), "a new finding must not be tagged NEW");
   assert.match(html, /ongoing[\s\S]*writes stalled/);
 });
 
@@ -154,10 +154,10 @@ test("notifyIfNew with alerting: false never sends, but still returns the new ke
   assert.deepEqual(result.keys, ["proj:spike:firestore.reads"]);
 });
 
-test("renderEmail gives a low finding its own muted color, distinct from warn's amber", () => {
+test("renderEmail leaves low findings out of the list entirely, even as context alongside a real one", () => {
+  const warnFinding = finding("proj:spike:firestore.reads", { text: "reads spiked" });
   const lowFinding = finding("proj:api-key:abc", { level: "low", kind: "api-key", text: "unrestricted key" });
-  const projects = [{ project: "proj", name: "Proj", findings: [lowFinding], errorTruncated: false }];
-  const html = renderEmail(report(projects), ["proj:api-key:abc"], null);
-  assert.match(html, /#6b7280/);
-  assert.ok(!html.includes("#b45309"), "a low finding must not render in warn's amber");
+  const projects = [{ project: "proj", name: "Proj", findings: [warnFinding, lowFinding], errorTruncated: false }];
+  const html = renderEmail(report(projects), ["proj:spike:firestore.reads"], null);
+  assert.ok(!html.includes("unrestricted key"), "a low finding must not appear in the email body");
 });
