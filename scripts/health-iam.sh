@@ -37,11 +37,18 @@ DRY_RUN=${DRY_RUN:-1}
 # the exact permission set with `gcloud iam roles describe <role>` before
 # applying broadly; these were picked for being narrowly-scoped predefined
 # roles, not hand-verified against every project in the estate.
+# run.viewer backs deploy correlation: it reads a service's revisions, whose
+# createTime is when that workload was last deployed. Every function in this
+# estate is 2nd Gen, and a 2nd Gen function *is* a Cloud Run service, so this
+# one role covers the whole estate -- roles/cloudfunctions.viewer would only
+# be needed if a 1st Gen function were ever deployed. Read-only over service
+# metadata: it cannot invoke anything or read a request body.
 ESTATE_ROLES=(
   roles/monitoring.viewer
   roles/logging.viewer
   roles/iam.securityReviewer
   roles/serviceusage.apiKeysViewer
+  roles/run.viewer
 )
 
 # Only in the host project: write the reports, and run the billing queries.

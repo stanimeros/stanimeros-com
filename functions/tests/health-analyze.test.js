@@ -623,3 +623,74 @@ test("a project with any critical finding gets status critical, even alongside w
   );
   assert.equal(result.status, "critical");
 });
+
+// --- deploy correlation ----------------------------------------------------
+//
+// deploys is a Cloud Run service-name -> deployedAt map (deploys.js), keyed
+// lowercase because Cloud Run service names always are, while the function
+// name it's matched against is camelCase -- the same case fold
+// dropRunShadows already applies to pair a gen-2 function with its Cloud Run
+// shadow.
+
+test("an entity's deployedAt is matched case-insensitively against the Cloud Run service name", () => {
+  const breakdowns = {
+    function: { onStudioCreated: { calls: dayValues(10), errors: {} } },
+  };
+  const deploys = { onstudiocreated: "2026-09-15T10:00:00Z" };
+  const result = analyzeProject(baseArgs({ breakdowns, deploys }));
+  const entity = result.entities.find((e) => e.name === "onStudioCreated");
+  assert.equal(entity.deployedAt, "2026-09-15T10:00:00Z");
+});
+
+test("an entity with no matching Cloud Run service gets deployedAt: null, not an absent field", () => {
+  const breakdowns = { function: { onStudioCreated: { calls: dayValues(10), errors: {} } } };
+  const result = analyzeProject(baseArgs({ breakdowns, deploys: {} }));
+  const entity = result.entities.find((e) => e.name === "onStudioCreated");
+  assert.equal(entity.deployedAt, null);
+});
+
+test("analyzeProject degrades cleanly when deploys is missing entirely (collector failed for this project)", () => {
+  const breakdowns = { function: { onStudioCreated: { calls: dayValues(10), errors: {} } } };
+  const result = analyzeProject(baseArgs({ breakdowns })); // no `deploys` key at all
+  const entity = result.entities.find((e) => e.name === "onStudioCreated");
+  assert.equal(entity.deployedAt, null);
+});
+
+test("a function-errors finding carries the entity's deployedAt", () => {
+  const breakdowns = {
+    function: { onStudioCreated: { calls: dayValues(10), errors: dayValues(0) } },
+  };
+  const rollingBreakdowns = {
+    function: { onStudioCreated: { calls: { "2026-09-16": 20 }, errors: { "2026-09-16": 10 } } }, // 50% error rate
+  };
+  const deploys = { onstudiocreated: "2026-09-16T09:00:00Z" };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns, deploys }));
+  const finding = result.findings.find((f) => f.kind === "function errors");
+  assert.ok(finding);
+  assert.equal(finding.deployedAt, "2026-09-16T09:00:00Z");
+});
+
+test("a finding for an entity with no known deploy carries no deployedAt field at all -- not an empty slot", () => {
+  const breakdowns = {
+    function: { onStudioCreated: { calls: dayValues(10), errors: dayValues(0) } },
+  };
+  const rollingBreakdowns = {
+    function: { onStudioCreated: { calls: { "2026-09-16": 20 }, errors: { "2026-09-16": 10 } } },
+  };
+  const result = analyzeProject(baseArgs({ breakdowns, rollingBreakdowns, deploys: {} }));
+  const finding = result.findings.find((f) => f.kind === "function errors");
+  assert.ok(finding);
+  assert.ok(!("deployedAt" in finding), "a finding with no deploy data must not carry a null/empty deployedAt slot");
+});
+
+test("a non-entity finding (sa-key) never carries deployedAt -- there is no deploy to point at", () => {
+  const iam = {
+    serviceAccounts: [{ email: "sa@proj.iam.gserviceaccount.com", userManagedKeys: [{ name: "k1", validAfterTime: "2026-09-01T00:00:00Z" }] }],
+    broadBindings: [],
+    unrestrictedKeys: [],
+  };
+  const result = analyzeProject(baseArgs({ iam, deploys: { onstudiocreated: "2026-09-16T09:00:00Z" } }));
+  const finding = result.findings.find((f) => f.kind === "sa-key");
+  assert.ok(finding);
+  assert.ok(!("deployedAt" in finding));
+});

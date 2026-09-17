@@ -13,6 +13,24 @@
 
 const FINDINGS = "health_findings";
 
+// How many deploy timestamps a single finding document keeps. This is a
+// "still failing, N deploys later" trail, not an audit log -- 10 redeploys
+// of the same unfixed bug is already well past the point of being useful
+// context, so the array is capped and deploysSinceFirstSeen (uncapped) is
+// the number to actually alarm on.
+const DEPLOY_HISTORY_CAP = 10;
+
+// The only finding kinds a deploy can plausibly explain -- everything else
+// (cost, quota, sa-key/broad-role/api-key hygiene) has no function or
+// service behind it to have redeployed. analyze.js only ever attaches
+// `deployedAt` to a finding for one of these kinds, so this set exists here
+// only to let computeResolvedAfterDeploy recognise which stored keys are
+// entity-shaped without re-parsing analyze.js's decision.
+const ENTITY_FINDING_KINDS = new Set([
+  "function errors", "function silent", "function spike",
+  "run errors", "run silent", "run spike",
+]);
+
 // A `resolved` key that reappears within this window is the flapping case
 // (plan.md S1.3/B3) -- it's the same incident continuing, so `firstSeen`
 // and `reopenCount` carry through. Reappearing later than this is treated as
@@ -52,6 +70,122 @@ function isAckExpired(ackedUntil, now) {
   return !ackedUntil || new Date(ackedUntil).getTime() <= now.getTime();
 }
 
+// --- deploy correlation (pure) --------------------------------------------
+//
+// A deploy NEVER resolves a finding. Resolution stays exactly what it always
+// was -- "the check stopped firing" -- computed below with no reference to
+// any of this. The reason is asymmetric risk: if a redeploy could mark a
+// finding resolved, a redeploy that *didn't* fix the underlying bug would
+// silently clear a real, still-true finding -- strictly worse than not
+// correlating deploys at all, since a false "resolved" looks exactly like
+// good news. Everything here only ever adds an annotation (deploys,
+// deploysSinceFirstSeen, resolvedAfterDeploy) alongside a state the rest of
+// this file already decided; it never feeds back into `state` itself.
+//
+// Phrasing note for anything user-facing built on these fields: a deploy
+// lining up with a finding closing is a correlation, not proof of causation
+// -- the finding could have cleared for an unrelated reason at the same
+// moment. Say "correlates with" / "since the last deploy", never "fixed by".
+
+/**
+ * A finding key encodes its subject as `${project}:${kindDotEncoded}:${subject}`
+ * (findingKey in analyze.js). For the entity-shaped kinds in
+ * ENTITY_FINDING_KINDS, `subject` is exactly the entity name with no
+ * embedded colon (function/service names don't contain one, unlike e.g.
+ * sa-key's `email:keyId`), so it can be recovered without a second field on
+ * every stored document. Returns null for anything else.
+ */
+function entityNameFromKey(existing) {
+  if (!ENTITY_FINDING_KINDS.has(existing.kind)) return null;
+  const kindEncoded = String(existing.kind).replace(/\s+/g, ".");
+  const prefix = `${existing.project}:${kindEncoded}:`;
+  return existing.key.startsWith(prefix) ? existing.key.slice(prefix.length) : null;
+}
+
+/**
+ * Builds project -> (lowercased entity name -> deployedAt) from this run's
+ * report, so resolution (below) can ask "did the entity behind this
+ * now-absent finding deploy since it was last seen" using the *current*
+ * run's fresh read, not a stale one -- the whole point of catching "fixed by
+ * a deploy that landed between the last two runs".
+ */
+function buildDeploysByProject(report) {
+  const byProject = new Map();
+  for (const project of report.projects) {
+    const byName = new Map();
+    for (const entity of project.entities || []) {
+      if (entity.deployedAt) byName.set(entity.name.toLowerCase(), entity.deployedAt);
+    }
+    byProject.set(project.project, byName);
+  }
+  return byProject;
+}
+
+/**
+ * Advances a finding's deploy trail by at most one entry per run. `cur`
+ * carries this run's `deployedAt` for the finding's entity (undefined for a
+ * non-entity kind, or when this run's deploy read degraded -- see
+ * deploys.js). The three cases:
+ *
+ * - No prior anchor, a fresh one arrives: record it as the baseline. Not
+ *   itself a "redeploy since first seen" -- there's no earlier deploy to
+ *   compare it against, so counting it would overstate how many times a fix
+ *   has been attempted.
+ * - A newer deploy than the stored anchor: this is the actual signal --
+ *   push it onto the (capped) trail and bump the counter.
+ * - Nothing new, or nothing available this run: carry the existing anchor
+ *   and trail forward untouched. A transient read failure must not erase
+ *   history any more than it should erase any other finding.
+ */
+function advanceDeployHistory(existing, cur) {
+  const prevAnchor = existing.deployedAt || null;
+  const deploys = Array.isArray(existing.deploys) ? [...existing.deploys] : [];
+  let deploysSinceFirstSeen = existing.deploysSinceFirstSeen || 0;
+  let deployedAt = prevAnchor;
+
+  if (cur.deployedAt && prevAnchor && new Date(cur.deployedAt).getTime() > new Date(prevAnchor).getTime()) {
+    deploys.push(cur.deployedAt);
+    if (deploys.length > DEPLOY_HISTORY_CAP) deploys.shift();
+    deploysSinceFirstSeen += 1;
+    deployedAt = cur.deployedAt;
+  } else if (cur.deployedAt && !prevAnchor) {
+    deployedAt = cur.deployedAt;
+  }
+
+  return { deployedAt, deploys, deploysSinceFirstSeen };
+}
+
+/**
+ * On resolution: the nearest deploy that falls strictly after this finding
+ * was last seen and no later than the moment it resolved. That window is
+ * exactly "could this deploy plausibly be why the check stopped firing" --
+ * a deploy from before the finding was last observed still failing clearly
+ * wasn't the fix. Candidates come from this run's fresh entity read (a
+ * deploy that landed since the last run, before the entity even had a
+ * chance to report again) and from the finding's own recorded trail (a
+ * deploy already noticed while it was still open). Returns null when the
+ * kind isn't entity-shaped, or nothing falls in the window -- correlation,
+ * not a guess.
+ */
+function computeResolvedAfterDeploy(existing, deploysByProject, nowIso) {
+  const name = entityNameFromKey(existing);
+  if (!name) return null;
+  const byName = deploysByProject.get(existing.project);
+  const fresh = byName && byName.get(name.toLowerCase());
+  const candidates = [fresh, ...(existing.deploys || [])].filter(Boolean);
+  const lastSeenMs = existing.lastSeen ? new Date(existing.lastSeen).getTime() : -Infinity;
+  const resolvedMs = new Date(nowIso).getTime();
+
+  let best = null;
+  for (const candidate of candidates) {
+    const t = new Date(candidate).getTime();
+    if (t > lastSeenMs && t <= resolvedMs && (!best || t > new Date(best).getTime())) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 // --- pure state machine (no Firestore -- takes what it needs, returns what
 // to write) -------------------------------------------------------------
 
@@ -64,6 +198,7 @@ function isAckExpired(ackedUntil, now) {
 function planLifecycleUpdate(report, existingByKey, now) {
   const nowIso = isoNow(now);
   const checkedProjectIds = new Set(report.projects.map((p) => p.project));
+  const deploysByProject = buildDeploysByProject(report);
 
   const currentByKey = new Map();
   for (const project of report.projects) {
@@ -73,6 +208,10 @@ function planLifecycleUpdate(report, existingByKey, now) {
         level: finding.level,
         kind: finding.kind,
         text: finding.text,
+        // Only set for the function/run-shaped kinds analyze.js attaches it
+        // to (see ENTITY_FINDING_KINDS) -- undefined here for everything
+        // else, which advanceDeployHistory treats as "nothing new".
+        deployedAt: finding.deployedAt || null,
       });
     }
   }
@@ -102,6 +241,10 @@ function planLifecycleUpdate(report, existingByKey, now) {
           reopenCount: 0,
           ackedUntil: null,
           ackedBy: null,
+          deployedAt: cur.deployedAt || null,
+          deploys: [],
+          deploysSinceFirstSeen: 0,
+          resolvedAfterDeploy: null,
         },
       });
       continue;
@@ -113,6 +256,11 @@ function planLifecycleUpdate(report, existingByKey, now) {
     let runsSeen = (existing.runsSeen || 0) + 1;
     let ackedUntil = existing.ackedUntil || null;
     let ackedBy = existing.ackedBy || null;
+    // Deploy trail carried through by default -- a fresh occurrence of the
+    // same key (the `else` branch just below) is the one case that resets
+    // it, since that's deliberately treated as an unrelated incident rather
+    // than a continuation.
+    let deployBase = existing;
 
     if (existing.state === "resolved") {
       const gapMs = existing.resolvedAt
@@ -125,6 +273,11 @@ function planLifecycleUpdate(report, existingByKey, now) {
         firstSeen = nowIso;
         reopenCount = 0;
         runsSeen = 1;
+        // Fresh incident, not a continuation of the old one -- stale deploy
+        // history from an earlier, unrelated occurrence of this same key
+        // would otherwise misreport "3 deploys later" against a clock that
+        // hasn't actually been running.
+        deployBase = { deployedAt: null, deploys: [] };
       }
       state = "open";
     } else if (existing.state === "unknown") {
@@ -147,6 +300,8 @@ function planLifecycleUpdate(report, existingByKey, now) {
       state = "open";
     }
 
+    const { deployedAt, deploys, deploysSinceFirstSeen } = advanceDeployHistory(deployBase, cur);
+
     writes.push({
       key,
       data: {
@@ -163,6 +318,12 @@ function planLifecycleUpdate(report, existingByKey, now) {
         reopenCount,
         ackedUntil,
         ackedBy,
+        deployedAt,
+        deploys,
+        deploysSinceFirstSeen,
+        // Reset while open -- it's only meaningful the moment a finding
+        // actually resolves (set below), and stays stale otherwise.
+        resolvedAfterDeploy: null,
       },
     });
   }
@@ -188,8 +349,15 @@ function planLifecycleUpdate(report, existingByKey, now) {
     // Project was read cleanly and the key just isn't there any more --
     // that's what "resolved" means. Acked findings are not exempt: an ack
     // says "seen, expected", not "stop tracking" (plan.md S1.5 -- "they do
-    // not stop being checked").
-    writes.push({ key, data: { ...existing, state: "resolved", resolvedAt: nowIso } });
+    // not stop being checked"). resolvedAfterDeploy is set here and only
+    // here -- it is a note on *why* a resolution might have happened, never
+    // a second, deploy-driven way to *reach* one; `state` above was already
+    // decided with no reference to deploys at all.
+    const resolvedAfterDeploy = computeResolvedAfterDeploy(existing, deploysByProject, nowIso);
+    writes.push({
+      key,
+      data: { ...existing, state: "resolved", resolvedAt: nowIso, resolvedAfterDeploy },
+    });
   }
 
   return writes;
@@ -264,4 +432,16 @@ async function pruneLifecycle(db, retentionDays, now = new Date()) {
   return snap.size;
 }
 
-module.exports = { FINDINGS, docIdFor, planLifecycleUpdate, updateLifecycle, pruneLifecycle, REOPEN_WINDOW_MS };
+module.exports = {
+  FINDINGS,
+  docIdFor,
+  planLifecycleUpdate,
+  updateLifecycle,
+  pruneLifecycle,
+  REOPEN_WINDOW_MS,
+  DEPLOY_HISTORY_CAP,
+  buildDeploysByProject,
+  advanceDeployHistory,
+  computeResolvedAfterDeploy,
+  entityNameFromKey,
+};

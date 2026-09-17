@@ -205,7 +205,7 @@ function buildEntity(name, kind, data, rollingData) {
  * "last 24h" against this dashboard's per-function calls must see the same
  * number, not whatever the newest complete UTC day happened to be.
  */
-function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings) {
+function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings, deploys) {
   const entities = [];
   const kinds = new Set([...Object.keys(breakdowns || {}), ...Object.keys(rollingBreakdowns || {})]);
 
@@ -239,14 +239,28 @@ function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings
   const { entities: kept, shadowedCalls } = dropRunShadows(entities);
   kept.sort((a, b) => b.errors - a.errors || b.calls - a.calls);
 
+  // deploys is a Cloud Run service-name -> last-deployed-at map (deploys.js),
+  // keyed lowercase because Cloud Run service names always are, while a
+  // paired Cloud Function's name (and this entity's `name`, post-
+  // dropRunShadows) is camelCase -- same case fold dropRunShadows itself
+  // uses to pair the two in the first place. Attached to the entity
+  // (schema-visible) unconditionally so the dashboard can show "last
+  // deployed" even when nothing is currently wrong; left off findings below
+  // when there's nothing to attach, rather than a null placeholder, per
+  // health-schema.md's "don't attach an empty slot" rule.
   for (const entity of kept) {
-    const { name, kind, calls: callsNow, callsBaseline, errors: errorsNow, errorRate } = entity;
+    entity.deployedAt = (deploys && deploys[entity.name.toLowerCase()]) || null;
+  }
+
+  for (const entity of kept) {
+    const { name, kind, calls: callsNow, callsBaseline, errors: errorsNow, errorRate, deployedAt } = entity;
     if (errorsNow >= 5 && errorRate >= 0.05) {
       findings.push({
         key: findingKey(projectId, `${kind} errors`, name),
         level: errorRate >= 0.25 ? "critical" : "warn",
         kind: `${kind} errors`,
         text: `${name}: ${formatValue(errorsNow)} failed of ${formatValue(callsNow)} calls over the last 24h (${Math.round(errorRate * 100)}%)`,
+        ...(deployedAt ? { deployedAt } : {}),
       });
     } else if (callsNow === 0 && callsBaseline >= cfg.spikeFloor) {
       findings.push({
@@ -254,6 +268,7 @@ function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings
         level: LEVEL_BY_KIND[`${kind} silent`],
         kind: `${kind} silent`,
         text: `${name}: no calls in the last 24h (baseline ${formatValue(callsBaseline)}/day)`,
+        ...(deployedAt ? { deployedAt } : {}),
       });
     } else if (callsNow >= cfg.spikeFloor && callsBaseline > 0 && callsNow / callsBaseline >= cfg.spikeRatio) {
       findings.push({
@@ -261,6 +276,7 @@ function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings
         level: LEVEL_BY_KIND[`${kind} spike`],
         kind: `${kind} spike`,
         text: `${name}: ${formatValue(callsNow)} calls vs baseline ${formatValue(callsBaseline)} over the last 24h (${(callsNow / callsBaseline).toFixed(1)}x)`,
+        ...(deployedAt ? { deployedAt } : {}),
       });
     }
   }
@@ -375,6 +391,7 @@ function analyzeProject({
   cfg,
   billingAccount,
   iam,
+  deploys,
 }) {
   const findings = [];
   const metrics = {};
@@ -384,7 +401,7 @@ function analyzeProject({
   // both metric names) before spike/stall/failure checks run on it --
   // otherwise the same real traffic produces two findings for one event. See
   // analyzeMetric's `suppressFindings`.
-  const { entities, shadowedCalls } = analyzeEntities(project.id, breakdowns, rollingBreakdowns, cfg, findings);
+  const { entities, shadowedCalls } = analyzeEntities(project.id, breakdowns, rollingBreakdowns, cfg, findings, deploys);
 
   for (const spec of metricSpecs) {
     const historyData = metricData[spec.key];

@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Activity,
   AlertCircle,
@@ -146,30 +146,38 @@ interface Report {
 
 const LEVEL_ORDER: Record<Level, number> = { critical: 0, warn: 1, low: 2, ok: 3 }
 
-// 5.1 — a left border-accent on an otherwise neutral card body. Saturated
-// fill is reserved for the single worst item on the page (see `highlight`
-// below), never spread across every card of a given level.
+// Mockup decision 2 — severity is a 3px stripe on the row/card edge, never a
+// tinted card. A wash survives only behind a status pill (see `--hc-wash`).
+// Colors are the exact hex from the mockup's `:root` block (palette.css).
 const LEVEL_STYLE: Record<Level, string> = {
-  critical: "border-l-4 border-l-red-500",
-  warn: "border-l-4 border-l-amber-500",
-  low: "border-l-4 border-l-slate-400",
-  ok: "border-l-4 border-l-transparent",
+  critical: "border-l-[3px] border-l-[var(--hc-critical)]",
+  warn: "border-l-[3px] border-l-[var(--hc-warn)]",
+  low: "border-l-[3px] border-l-[var(--hc-low)]",
+  ok: "border-l-[3px] border-l-transparent",
 }
 
-// The single saturated treatment, reserved for the one worst card on the
-// page — everything else uses the neutral `LEVEL_STYLE` above.
+// The one project called out as "worst in the estate" still gets no colour
+// wash — just a heavier stripe than everyone else.
 const LEVEL_HIGHLIGHT_STYLE: Record<Level, string> = {
-  critical: "border-red-300 bg-red-50 dark:bg-red-950/30",
-  warn: "border-amber-300 bg-amber-50 dark:bg-amber-950/30",
-  low: "border-slate-300 bg-slate-50 dark:bg-slate-900/30",
+  critical: "border-l-[5px] border-l-[var(--hc-critical)]",
+  warn: "border-l-[5px] border-l-[var(--hc-warn)]",
+  low: "border-l-[5px] border-l-[var(--hc-low)]",
   ok: "border-border",
 }
 
+// The fill for a row's own stripe `<span>` (a background, not a border).
+const LEVEL_BG: Record<Level, string> = {
+  critical: "bg-[var(--hc-critical)]",
+  warn: "bg-[var(--hc-warn)]",
+  low: "bg-[var(--hc-low)]",
+  ok: "bg-[var(--hc-good)]",
+}
+
 const LEVEL_TEXT: Record<Level, string> = {
-  critical: "text-red-600",
-  warn: "text-amber-600",
-  low: "text-slate-500",
-  ok: "text-emerald-600",
+  critical: "text-[var(--hc-critical)]",
+  warn: "text-[var(--hc-warn)]",
+  low: "text-[var(--hc-low)]",
+  ok: "text-[var(--hc-good)]",
 }
 
 // `low` gets a quieter mark than a warning triangle — hygiene, not an
@@ -351,7 +359,7 @@ function FindingRow({
           {finding.projectName}
         </Badge>
       )}
-      <span className={`shrink-0 font-medium ${LEVEL_TEXT[finding.level]}`}>{finding.kind}</span>
+      <span className={`shrink-0 font-mono font-medium ${LEVEL_TEXT[finding.level]}`}>{finding.kind}</span>
       <span className="text-muted-foreground">{finding.text}</span>
       {isNew?.(finding.key) && (
         <Badge variant="destructive" className="h-4 shrink-0 px-1 text-[10px]">
@@ -369,7 +377,7 @@ function FindingRow({
       {/* A finding that keeps clearing and coming back is a different
           problem from one that simply stays broken. */}
       {life && life.reopenCount > 0 && (
-        <span className="shrink-0 text-xs text-amber-600" title="Cleared and came back">
+        <span className={`shrink-0 font-mono text-xs ${LEVEL_TEXT.warn}`} title="Cleared and came back">
           flapping ×{life.reopenCount}
         </span>
       )}
@@ -493,14 +501,9 @@ function ProjectCard({
             <div className="flex flex-wrap items-center gap-2">
               <StatusIcon level={project.status} />
               <span className="font-semibold">{project.name}</span>
-              <span className="text-xs text-muted-foreground">{project.project}</span>
-              <span
-                className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
-                  project.plan === "Blaze"
-                    ? "border-amber-300 bg-amber-50 text-amber-700"
-                    : "border-border text-muted-foreground"
-                }`}
-              >
+              <span className="font-mono text-xs text-muted-foreground">{project.project}</span>
+              {/* Plan isn't a severity signal — no chroma, mockup decision 1. */}
+              <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                 {project.plan}
               </span>
             </div>
@@ -550,7 +553,7 @@ function ProjectCard({
                 {metrics.map(([key, metric]) => (
                   <div key={key} className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-2 py-1.5">
                     <div className="min-w-0">
-                      <div className="truncate text-xs text-muted-foreground">{key}</div>
+                      <div className="truncate font-mono text-xs text-muted-foreground">{key}</div>
                       <div className="text-sm">
                         {formatValue(metric.latest, metric.unit)}
                         <span className="text-xs text-muted-foreground">
@@ -659,6 +662,206 @@ function ProjectCard({
   )
 }
 
+const TIER_ORDER: { level: Level; heading: string }[] = [
+  { level: "critical", heading: "Errors" },
+  { level: "warn", heading: "Warnings" },
+  { level: "low", heading: "Hygiene" },
+  { level: "ok", heading: "Clean" },
+]
+
+/** The one finding a compact row leads with: worst level first, then oldest
+ *  (the one that's been open longest is the one most worth a glance). Acked
+ *  findings never surface here — same rule as everywhere else on the page. */
+function leadFinding(project: ProjectResult, lifecycle?: Map<string, LifecycleFinding>) {
+  const active = project.findings.filter((f) => lifecycle?.get(f.key)?.state !== "acked")
+  if (active.length === 0) return null
+  const sorted = [...active].sort((a, b) => {
+    const byLevel = LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]
+    if (byLevel !== 0) return byLevel
+    const la = lifecycle?.get(a.key)?.firstSeen ?? ""
+    const lb = lifecycle?.get(b.key)?.firstSeen ?? ""
+    return la.localeCompare(lb)
+  })
+  return { finding: sorted[0], count: active.length }
+}
+
+/** Mockup decision 3 — one project per compact (~46px) row: name, id, the
+ *  lead finding in its own words, and how long it's been open, then figures
+ *  right-aligned so the eye scans one path down the page. Opening a row
+ *  reveals the exact same `ProjectCard` used by the Cards view — this row
+ *  is the list, `ProjectCard` is the drill-down, per the mockup's "What
+ *  changes" note on row anatomy. */
+function ProjectRow({
+  project,
+  lifecycle,
+  isNew,
+  onAck,
+  generated,
+}: {
+  project: ProjectResult
+  lifecycle?: Map<string, LifecycleFinding>
+  isNew?: (key: string) => boolean
+  onAck?: (key: string, ack: boolean) => void
+  generated?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const active = project.findings.filter((f) => lifecycle?.get(f.key)?.state !== "acked")
+  const ackedCount = project.findings.length - active.length
+  const lead = leadFinding(project, lifecycle)
+  const leadLife = lead ? lifecycle?.get(lead.finding.key) : undefined
+  const anyNew = active.some((f) => isNew?.(f.key))
+  const flapCount = Math.max(0, ...active.map((f) => lifecycle?.get(f.key)?.reopenCount ?? 0), 0)
+  const callsMetric = Object.entries(project.metrics).find(
+    ([key]) => /call/i.test(key) && !key.endsWith(".failed")
+  )
+
+  return (
+    <div className="border-t border-border first:border-t-0">
+      {/* A `<div role="button">`, not a real `<button>` — the sparkline
+          below has its own focusable, hoverable points (Series), and a
+          native button can't contain other interactive content. */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            setOpen((v) => !v)
+          }
+        }}
+        aria-expanded={open}
+        className="grid w-full cursor-pointer grid-cols-[3px_minmax(0,1fr)] items-stretch text-left hover:bg-muted/40 sm:grid-cols-[3px_minmax(0,1fr)_auto]"
+      >
+        <span aria-hidden="true" className={`row-span-2 sm:row-span-1 ${LEVEL_BG[project.status]}`} />
+
+        <span className="col-start-2 flex min-w-0 flex-col gap-0.5 py-2 pr-3 pl-3">
+          <span className="flex flex-wrap items-baseline gap-2">
+            <span className="font-semibold">{project.name}</span>
+            <span className="font-mono text-[11px] text-muted-foreground">{project.project}</span>
+            {anyNew && (
+              <Badge variant="destructive" className="h-4 shrink-0 px-1 text-[10px]">
+                NEW
+              </Badge>
+            )}
+            {flapCount > 0 && (
+              <span className={`font-mono text-[10px] ${LEVEL_TEXT.warn}`}>flapping ×{flapCount}</span>
+            )}
+          </span>
+          <span className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-xs text-muted-foreground">
+            {lead ? (
+              <>
+                <span className={`font-mono ${LEVEL_TEXT[lead.finding.level]}`}>{lead.finding.kind}</span>
+                <span className="truncate">{lead.finding.text}</span>
+                {lead.count > 1 && <span>+{lead.count - 1} more</span>}
+                {leadLife && (
+                  <span className="font-mono text-muted-foreground">open {duration(leadLife.firstSeen)}</span>
+                )}
+              </>
+            ) : ackedCount > 0 ? (
+              <span>All findings acknowledged</span>
+            ) : (
+              <span>No findings{generated ? ` · last swept ${timeAgo(generated)}` : ""}</span>
+            )}
+            {ackedCount > 0 && <span>· {ackedCount} acked</span>}
+          </span>
+        </span>
+
+        <span className="col-start-2 flex items-center gap-4 pb-2 pl-3 font-mono text-xs text-muted-foreground sm:col-start-3 sm:py-2 sm:pr-3 sm:pl-0">
+          {callsMetric && (
+            <span
+              className="hidden w-[72px] sm:block"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <Series
+                variant="spark"
+                points={callsMetric[1].history.map((value, i) => ({
+                  day: callsMetric[1].days[i] ?? String(i),
+                  value,
+                }))}
+                baseline={callsMetric[1].baseline}
+                unit={callsMetric[1].unit}
+                valueFormatter={formatValue}
+                ariaLabel={`${project.name} calls over time`}
+              />
+            </span>
+          )}
+          <span className="flex flex-col items-end gap-0.5">
+            <span className="text-[9px] tracking-wide text-muted-foreground uppercase">errors</span>
+            <span className={`text-[13px] tabular-nums ${project.errorCount ? LEVEL_TEXT.critical : "text-foreground"}`}>
+              {project.errorCount === null ? "unread" : formatValue(project.errorCount, null)}
+            </span>
+          </span>
+          <span className="flex flex-col items-end gap-0.5">
+            <span className="text-[9px] tracking-wide text-muted-foreground uppercase">findings</span>
+            <span className="text-[13px] text-foreground tabular-nums">{active.length}</span>
+          </span>
+        </span>
+      </div>
+
+      {open && (
+        <div className="border-t border-border bg-muted/20 p-3">
+          <ProjectCard project={project} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Mockup decision 4 — Errors / Warnings / Hygiene / Clean, each a heading
+ *  with a count and a hairline rule, is the primary organising structure on
+ *  both Overview (estate-wide) and Projects (filtered). */
+function TieredProjectRows({
+  projects,
+  lifecycle,
+  isNew,
+  onAck,
+  generated,
+}: {
+  projects: ProjectResult[]
+  lifecycle: Map<string, LifecycleFinding>
+  isNew: (key: string) => boolean
+  onAck: (key: string, ack: boolean) => void
+  generated?: string
+}) {
+  const groups = TIER_ORDER.map((tier) => ({ ...tier, items: projects.filter((p) => p.status === tier.level) })).filter(
+    (g) => g.items.length > 0
+  )
+
+  if (groups.length === 0) {
+    return <p className="py-6 text-center text-sm text-muted-foreground">No projects match the current filter.</p>
+  }
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border bg-card">
+      {groups.map((group) => (
+        <div key={group.level}>
+          <div
+            className={`flex items-center gap-2 px-3 pt-3 pb-1.5 font-mono text-[11px] tracking-wide uppercase ${LEVEL_TEXT[group.level]}`}
+          >
+            <span>{group.heading}</span>
+            <span className="text-muted-foreground">{group.items.length}</span>
+            <span className="h-px flex-1 bg-border" aria-hidden="true" />
+          </div>
+          <div>
+            {group.items.map((project) => (
+              <ProjectRow
+                key={project.project}
+                project={project}
+                lifecycle={lifecycle}
+                isNew={isNew}
+                onAck={onAck}
+                generated={generated}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function OverviewTab({
   report,
   projects,
@@ -678,19 +881,20 @@ function OverviewTab({
   onAck: (key: string, ack: boolean) => void
   onSelectRun?: (runId: string) => void
 }) {
-  // The organising principle the owner asked for: findings grouped by tier,
-  // estate-wide, rather than one undifferentiated per-project list.
-  const allFindings: Finding[] = projects.flatMap((p) =>
-    p.findings.map((f) => ({ ...f, projectName: p.name }))
-  )
-  const activeFindings = allFindings.filter((f) => lifecycle.get(f.key)?.state !== "acked")
-  const ackedFindings = allFindings.filter((f) => lifecycle.get(f.key)?.state === "acked")
+  // Mockup decisions 3 + 4 — projects grouped by tier (Errors / Warnings /
+  // Hygiene / Clean) are the primary structure now, so there's no separate
+  // estate-wide findings list here; each row's drill-down still has the
+  // full per-finding ack/un-ack UI.
+  const allHealthy = projects.every((p) => p.status === "ok")
 
   return (
     <div className="space-y-4">
       {/* C3 — the same numbers the tiles used to spend a quarter of the
           viewport on, as one bar whose proportions read at a glance. */}
-      <Card className="gap-3 px-4 py-3 sm:flex-row sm:items-center">
+      {/* Cost moves off the front page (mockup decision: "Cost") — reachable
+          only from its own tab, which explains itself when the export is
+          stale instead of rendering a grid of dashes. */}
+      <Card className="gap-3 px-4 py-3">
         <div className="min-w-0 flex-1 space-y-1">
           <ProportionBar
             segments={[
@@ -708,17 +912,6 @@ function OverviewTab({
             <span>{report.counts.ok} clean</span>
             <span>of {report.counts.total} projects</span>
           </div>
-        </div>
-        <div className="shrink-0 text-sm text-muted-foreground sm:w-44 sm:text-right">
-          <span className="flex items-center gap-1.5 sm:justify-end">
-            <CircleDollarSign className="size-3.5" aria-hidden="true" />
-            Cost · {report.costWindowDays}d
-          </span>
-          <span className="text-foreground">
-            {report.costTotal === null ? "—" : formatMoney(report.costTotal, report.costCurrency)}
-          </span>
-          {/* A bare "—" reads as "zero spend". Say which kind of nothing. */}
-          {report.costStale && <span className="block text-xs text-amber-600">export stale</span>}
         </div>
       </Card>
 
@@ -745,8 +938,8 @@ function OverviewTab({
       )}
 
       {resolved.length > 0 && (
-        <Card className="gap-2 border-emerald-300 bg-emerald-50 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-700">
+        <Card className="gap-2 border-l-[3px] border-l-[var(--hc-good)] px-4 py-3">
+          <div className={`flex items-center gap-1.5 text-sm font-medium ${LEVEL_TEXT.ok}`}>
             <CheckCircle2 className="size-4" aria-hidden="true" />
             Resolved in the last 7 days
           </div>
@@ -764,8 +957,8 @@ function OverviewTab({
       )}
 
       {report.projectErrors.length > 0 && (
-        <Card className="gap-2 border-amber-300 bg-amber-50 px-4 py-3">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600">
+        <Card className="gap-2 border-l-[3px] border-l-[var(--hc-warn)] px-4 py-3">
+          <div className={`flex items-center gap-1.5 text-sm font-medium ${LEVEL_TEXT.warn}`}>
             <AlertCircle className="size-4" aria-hidden="true" />
             Not checked
           </div>
@@ -779,145 +972,32 @@ function OverviewTab({
         </Card>
       )}
 
-      <Card className="gap-2 px-4 py-3">
-        <div className="text-sm font-medium">
-          {activeFindings.length === 0 ? "All projects are healthy" : "Findings, by severity"}
-        </div>
-        <GroupedFindings findings={activeFindings} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
-        <AckedRow findings={ackedFindings} lifecycle={lifecycle} onAck={onAck} />
-      </Card>
-
-      <Card className="gap-2 px-4 py-3">
-        <div className="text-sm font-medium">All projects</div>
-        <ul className="divide-y divide-border/60">
-          {projects.map((project) => (
-            <li key={project.project} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-              <span className="flex min-w-0 items-center gap-2">
-                <StatusIcon level={project.status} />
-                <span className="truncate">{project.name}</span>
-                <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{project.project}</span>
-              </span>
-              <span className="shrink-0 text-xs text-muted-foreground">
-                {project.cost ? formatMoney(project.cost.last30d, project.cost.currency) : "—"}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Card>
+      {/* Mockup decisions 3 + 4 — one compact row per project, grouped under
+          Errors / Warnings / Hygiene / Clean. This is the primary structure
+          on both Overview (here, estate-wide) and Projects (filtered). */}
+      {allHealthy ? (
+        <Card className="gap-1 px-4 py-3 text-sm">
+          <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.ok}`}>
+            <CheckCircle2 className="size-4" aria-hidden="true" />
+            All projects are healthy
+          </span>
+        </Card>
+      ) : (
+        <TieredProjectRows
+          projects={projects}
+          lifecycle={lifecycle}
+          isNew={isNew}
+          onAck={onAck}
+          generated={report.generated}
+        />
+      )}
     </div>
   )
 }
 
-/** 5.3 — one row per project: status, findings by tier, calls sparkline,
- *  errors, cost. The existing card is the drill-down, expanded inline. */
-function ProjectsTable({
-  projects,
-  lifecycle,
-  isNew,
-  onAck,
-  highlightKey,
-}: {
-  projects: ProjectResult[]
-  lifecycle: Map<string, LifecycleFinding>
-  isNew: (key: string) => boolean
-  onAck: (key: string, ack: boolean) => void
-  highlightKey?: string
-}) {
-  const [expanded, setExpanded] = useState<string | null>(null)
-
-  return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <table className="w-full text-sm">
-        <thead className="bg-muted/40 text-xs text-muted-foreground">
-          <tr className="text-left">
-            <th className="py-2 pr-2 pl-3 font-normal">Project</th>
-            <th className="py-2 pr-2 font-normal">Findings</th>
-            <th className="py-2 pr-2 font-normal">Calls</th>
-            <th className="py-2 pr-2 font-normal">Errors</th>
-            <th className="py-2 pr-3 text-right font-normal">Cost · 30d</th>
-          </tr>
-        </thead>
-        <tbody>
-          {projects.map((project) => {
-            const active = project.findings.filter((f) => lifecycle.get(f.key)?.state !== "acked")
-            const tierCounts = { critical: 0, warn: 0, low: 0 }
-            for (const f of active) tierCounts[f.level]++
-            const isOpen = expanded === project.project
-            const callsMetric = Object.entries(project.metrics).find(
-              ([key]) => /call/i.test(key) && !key.endsWith(".failed")
-            )
-            return (
-              <Fragment key={project.project}>
-                <tr
-                  className={`cursor-pointer border-t border-border/60 hover:bg-muted/30 ${
-                    project.project === highlightKey ? "bg-red-50 dark:bg-red-950/20" : ""
-                  }`}
-                  onClick={() => setExpanded(isOpen ? null : project.project)}
-                >
-                  <td className="py-2 pr-2 pl-3">
-                    <span className="flex min-w-0 items-center gap-2">
-                      <StatusIcon level={project.status} />
-                      <span className="truncate font-medium">{project.name}</span>
-                    </span>
-                  </td>
-                  <td className="py-2 pr-2">
-                    <span className="flex flex-wrap gap-x-2 text-xs">
-                      {tierCounts.critical > 0 && (
-                        <span className={LEVEL_TEXT.critical}>{tierCounts.critical} critical</span>
-                      )}
-                      {tierCounts.warn > 0 && <span className={LEVEL_TEXT.warn}>{tierCounts.warn} warn</span>}
-                      {tierCounts.low > 0 && <span className={LEVEL_TEXT.low}>{tierCounts.low} low</span>}
-                      {active.length === 0 && <span className="text-muted-foreground">none</span>}
-                    </span>
-                  </td>
-                  <td className="w-24 py-2 pr-2">
-                    {callsMetric ? (
-                      <Series
-                        variant="spark"
-                        points={callsMetric[1].history.map((value, i) => ({
-                          day: callsMetric[1].days[i] ?? String(i),
-                          value,
-                        }))}
-                        baseline={callsMetric[1].baseline}
-                        unit={callsMetric[1].unit}
-                        valueFormatter={formatValue}
-                        ariaLabel={`${project.name} calls over time`}
-                      />
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="py-2 pr-2 text-xs text-muted-foreground">
-                    {project.errorCount === null
-                      ? "unread"
-                      : `${formatValue(project.errorCount, null)}${project.errorTruncated ? "+" : ""}`}
-                  </td>
-                  <td className="py-2 pr-3 pl-2 text-right text-xs">
-                    {project.cost ? formatMoney(project.cost.last30d, project.cost.currency) : "—"}
-                  </td>
-                </tr>
-                {isOpen && (
-                  <tr>
-                    <td colSpan={5} className="bg-muted/10 p-3">
-                      <ProjectCard
-                        project={project}
-                        lifecycle={lifecycle}
-                        isNew={isNew}
-                        onAck={onAck}
-                        highlight={project.project === highlightKey}
-                      />
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            )
-          })}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
+/** Mockup decision 3 — "Rows" is the default, dense view (~46px per project,
+ *  tier-grouped, all 15 fit one screen). "Cards" is the alternate, kept for
+ *  whoever wants the full drill-down open on every project at once. */
 function ProjectsTab({
   projects,
   lifecycle,
@@ -925,6 +1005,7 @@ function ProjectsTab({
   onAck,
   viewMode,
   highlightKey,
+  generated,
 }: {
   projects: ProjectResult[]
   lifecycle: Map<string, LifecycleFinding>
@@ -932,6 +1013,7 @@ function ProjectsTab({
   onAck: (key: string, ack: boolean) => void
   viewMode: "cards" | "table"
   highlightKey?: string
+  generated?: string
 }) {
   if (projects.length === 0) {
     return <p className="py-6 text-center text-sm text-muted-foreground">No projects match the current filter.</p>
@@ -939,12 +1021,12 @@ function ProjectsTab({
 
   if (viewMode === "table") {
     return (
-      <ProjectsTable
+      <TieredProjectRows
         projects={projects}
         lifecycle={lifecycle}
         isNew={isNew}
         onAck={onAck}
-        highlightKey={highlightKey}
+        generated={generated}
       />
     )
   }
@@ -1074,8 +1156,8 @@ function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
       </div>
 
       {unread.length > 0 && (
-        <Card className="gap-1 border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <span className="font-medium text-amber-600">Log read failed for:</span>{" "}
+        <Card className="gap-1 border-l-[3px] border-l-[var(--hc-warn)] px-4 py-3 text-sm">
+          <span className={`font-medium ${LEVEL_TEXT.warn}`}>Log read failed for:</span>{" "}
           <span className="text-muted-foreground">{unread.map((p) => p.name).join(", ")}</span>
         </Card>
       )}
@@ -1091,7 +1173,7 @@ function ErrorsTab({ projects }: { projects: ProjectResult[] }) {
               <li key={project.project}>
                 <div className="flex items-baseline justify-between gap-2 text-xs">
                   <span className="truncate">{project.name}</span>
-                  <span className="shrink-0 text-muted-foreground">
+                  <span className="shrink-0 font-mono text-muted-foreground">
                     {segments.map((s) => `${s.label} ${s.value}`).join(" · ")}
                   </span>
                 </div>
@@ -1150,25 +1232,27 @@ function CostTab({ report, projects }: { report: Report; projects: ProjectResult
   const withCost = projects.filter((p): p is ProjectResult & { cost: CostBreakdown } => p.cost !== null)
   const sorted = [...withCost].sort((a, b) => b.cost.last30d - a.cost.last30d)
 
+  // Mockup: while the billing export is dead, a grid of dashes reads as "no
+  // spend", which is worse than not showing it. Show the staleness
+  // explanation as the tab's whole content instead of the usual figures.
+  if (report.costStale) {
+    return (
+      <Card className="gap-1 border-l-[3px] border-l-[var(--hc-warn)] px-4 py-4 text-sm">
+        <span className={`flex items-center gap-1.5 font-medium ${LEVEL_TEXT.warn}`}>
+          <AlertTriangle className="size-4" aria-hidden="true" />
+          Cost data is stale
+        </span>
+        <span className="text-muted-foreground">
+          {report.costDataThrough
+            ? `The billing export has nothing newer than ${report.costDataThrough}. Every figure this tab would show is missing whatever happened since, so none are shown.`
+            : "The billing export could not be read at all, so no cost figure here can be trusted."}
+        </span>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-4">
-      {/* A1 — `cost: null` alone can't distinguish "Spark project, nothing to
-          bill" from "the billing export stopped weeks ago", and every figure
-          on this tab is wrong in the second case. Say which it is. */}
-      {report.costStale && (
-        <Card className="gap-1 border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <span className="flex items-center gap-1.5 font-medium text-amber-700">
-            <AlertTriangle className="size-4" aria-hidden="true" />
-            Cost data is stale
-          </span>
-          <span className="text-muted-foreground">
-            {report.costDataThrough
-              ? `The billing export has nothing newer than ${report.costDataThrough}. Every figure below is missing whatever happened since.`
-              : "The billing export could not be read at all, so no cost figure below can be trusted."}
-          </span>
-        </Card>
-      )}
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         <Tile
           label={`Total · ${report.costWindowDays}d`}
@@ -1318,6 +1402,17 @@ function FilterBar({
         <div className="ml-auto flex shrink-0 items-center gap-0.5 rounded-md border border-border p-0.5">
           <button
             type="button"
+            onClick={() => onViewModeChange("table")}
+            aria-pressed={viewMode === "table"}
+            className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
+              viewMode === "table" ? "bg-muted font-medium" : "text-muted-foreground"
+            }`}
+          >
+            <TableIcon className="size-3.5" aria-hidden="true" />
+            Rows
+          </button>
+          <button
+            type="button"
             onClick={() => onViewModeChange("cards")}
             aria-pressed={viewMode === "cards"}
             className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
@@ -1326,17 +1421,6 @@ function FilterBar({
           >
             <LayoutGrid className="size-3.5" aria-hidden="true" />
             Cards
-          </button>
-          <button
-            type="button"
-            onClick={() => onViewModeChange("table")}
-            aria-pressed={viewMode === "table"}
-            className={`flex items-center gap-1 rounded px-2 py-1 text-xs ${
-              viewMode === "table" ? "bg-muted font-medium" : "text-muted-foreground"
-            }`}
-          >
-            <TableIcon className="size-3.5" aria-hidden="true" />
-            Table
           </button>
         </div>
       )}
@@ -1394,7 +1478,9 @@ export default function Health() {
   )
 
   // 5.3 — table vs card density for the Projects tab, remembered per viewer.
-  const [viewMode, setViewModeState] = useState<"cards" | "table">("cards")
+  // Mockup decision 3 — Rows ("table") is the primary, default view; Cards
+  // stays reachable as the alternate.
+  const [viewMode, setViewModeState] = useState<"cards" | "table">("table")
   // 5.4 — light/dark is a toggle, default light, remembered per viewer.
   const [theme, setThemeState] = useState<"light" | "dark">("light")
 
@@ -1595,7 +1681,7 @@ export default function Health() {
           <LogIn aria-hidden="true" />
           Sign in with Google
         </Button>
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {error && <p className={`text-sm ${LEVEL_TEXT.critical}`}>{error}</p>}
       </div>
     )
   }
@@ -1623,7 +1709,7 @@ export default function Health() {
                       that should already have been replaced. Say so rather
                       than look current. */}
                   {Date.now() - new Date(report.generated).getTime() > 9 * 3600000 && (
-                    <span className="text-amber-600">· stale</span>
+                    <span className={LEVEL_TEXT.warn}>· stale</span>
                   )}
                   {loadingReport && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
                 </p>
@@ -1662,7 +1748,7 @@ export default function Health() {
         </header>
 
         {error && (
-          <Card className="flex-row items-center gap-2 border-red-300 bg-red-50 px-4 py-3 text-sm text-red-600">
+          <Card className={`flex-row items-center gap-2 border-l-[3px] border-l-[var(--hc-critical)] px-4 py-3 text-sm ${LEVEL_TEXT.critical}`}>
             <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
             {error}
           </Card>
@@ -1702,14 +1788,17 @@ export default function Health() {
         )}
 
         {sinceLast && (sinceLast.newCount > 0 || sinceLast.clearedCount > 0) && (
-          <Card className="flex-row flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
+          <Card className="flex-row flex-wrap items-center justify-between gap-2 bg-muted/40 px-4 py-2.5 text-sm">
             <span>
               <span className="text-muted-foreground">Since your last visit ({timeAgo(sinceLast.at)}):</span>{" "}
-              <span className={sinceLast.newCount ? LEVEL_TEXT.critical : ""}>{sinceLast.newCount} new</span> ·{" "}
-              <span className={sinceLast.clearedCount ? "text-emerald-600" : ""}>
+              <span className={`font-mono font-medium ${sinceLast.newCount ? LEVEL_TEXT.critical : ""}`}>
+                {sinceLast.newCount} new
+              </span>{" "}
+              ·{" "}
+              <span className={`font-mono font-medium ${sinceLast.clearedCount ? LEVEL_TEXT.ok : ""}`}>
                 {sinceLast.clearedCount} resolved
               </span>{" "}
-              · {sinceLast.stillOpen} still open
+              · <span className="font-mono font-medium">{sinceLast.stillOpen}</span> still open
             </span>
             <Button variant="ghost" size="sm" onClick={markSeen}>
               Mark all as seen
@@ -1783,6 +1872,7 @@ export default function Health() {
                 onAck={onAck}
                 viewMode={viewMode}
                 highlightKey={highlightKey}
+                generated={report.generated}
               />
             </TabsContent>
             <TabsContent value="errors">

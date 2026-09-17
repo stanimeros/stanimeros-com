@@ -13,6 +13,7 @@ const { timeseries, breakdown, windowFor, rollingWindow } = require("./monitorin
 const { readErrors } = require("./logging");
 const { fetchCosts, fetchBillingTotal, fetchCostDataThrough } = require("./billing");
 const { collectIam } = require("./iam");
+const { collectDeploys } = require("./deploys");
 const { analyzeProject, worstLevel } = require("./analyze");
 const { notifyIfNew, newKeys } = require("./notify");
 const { updateLifecycle, pruneLifecycle } = require("./lifecycle");
@@ -97,7 +98,13 @@ async function collect(project, token, cfg) {
   // by project -- it must not be able to take the rest of the sweep down.
   const iam = await collectIam(project.id, token);
 
-  return { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam };
+  // Deploy correlation: one more additive, degrade-per-project read on top
+  // of the checks above -- its own grant (roles/run.viewer) rolls out
+  // per-project too, same as collectIam's. See deploys.js for why this is a
+  // single call, and lifecycle.js for why a deploy never resolves a finding.
+  const deploys = await collectDeploys(project.id, token);
+
+  return { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam, deploys };
 }
 
 async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
@@ -128,7 +135,7 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
   const results = await mapWithLimit(projects, CONCURRENCY, async (project) => {
     const projectCfg = thresholdsFor(project.id);
     try {
-      const { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam } = await collect(
+      const { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam, deploys } = await collect(
         project,
         token,
         projectCfg
@@ -145,6 +152,7 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
         cfg: projectCfg,
         billingAccount: BILLING_ACCOUNT,
         iam,
+        deploys,
       });
     } catch (err) {
       projectErrors.push({

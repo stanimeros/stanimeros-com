@@ -609,7 +609,7 @@ export function DivergingBar({
 
         return (
           <div key={row.key} className="group/hcdiv relative flex items-center gap-2" style={{ height: rowHeight }}>
-            <span className="w-28 shrink-0 truncate text-xs text-muted-foreground" title={row.label}>
+            <span className="w-28 shrink-0 truncate font-mono text-xs text-muted-foreground" title={row.label}>
               {row.label}
             </span>
             {row.severity && (

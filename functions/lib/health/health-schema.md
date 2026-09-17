@@ -67,7 +67,12 @@ chronologically and is unique per run.
                                              // run errors|run silent|run spike|
                                              // missing_index|rules_denied|quota_exhausted|
                                              // billing|deploy_failure|sa-key|broad-role|api-key
-      "text":  "firestore.reads 804 vs baseline 4 (201.0x)"
+      "text":  "firestore.reads 804 vs baseline 4 (201.0x)",
+      "deployedAt": "2026-09-15T10:02:00Z"    // present ONLY on function/run-shaped kinds
+                                              // (function|run errors/silent/spike) whose entity
+                                              // has a known deploy time -- absent, not null, on
+                                              // every other kind and on an unmatched entity. See
+                                              // "Amendment: deploy correlation" below.
     }
   ],
 
@@ -92,7 +97,9 @@ chronologically and is unique per run.
       "errorsHistory":  [0, 0, 0],
       "errorRate":      0.0,                 // 0..1
       "logErrors":      0,                   // from Cloud Logging, same window
-      "days":           ["2026-09-14", ...]
+      "days":           ["2026-09-14", ...],
+      "deployedAt":     "2026-09-15T10:02:00Z"  // ISO-8601 UTC, or null -- see
+                                                 // "Amendment: deploy correlation" below
     }
   ],
 
@@ -142,7 +149,23 @@ manual runs update this store but deliberately don't touch `health_state/latest`
   "runsSeen":  14,
   "reopenCount": 2,                          // resolved -> open again within 48h = flapping
   "ackedUntil": null,                        // ISO-8601 UTC, or null = acked with no expiry (when state is "acked")
-  "ackedBy":   null                          // uid that called ackFinding, or null
+  "ackedBy":   null,                         // uid that called ackFinding, or null
+
+  // Deploy correlation (see "Amendment: deploy correlation" below). Always
+  // present, but only ever populated for a function/run-shaped kind -- an
+  // estate-hygiene or cost/quota finding has no deploy to point at, so these
+  // stay at their empty defaults (null / [] / 0) for the life of the doc.
+  "deployedAt":   "2026-09-16T09:00:00Z",    // latest deploy time seen for this finding's
+                                              // entity, or null if none is known yet
+  "deploys":      ["2026-09-15T00:00:00Z"],  // bounded trail of deploys observed WHILE this
+                                              // finding stayed open, oldest first, capped at 10
+  "deploysSinceFirstSeen": 2,                // count of entries ever pushed onto `deploys` --
+                                              // "still failing, N deploys later"
+  "resolvedAfterDeploy": null                // set only at the moment a finding resolves: the
+                                              // nearest deploy that fell between `lastSeen` and
+                                              // `resolvedAt`, or null if none did. A correlation
+                                              // to show alongside the resolution, never the
+                                              // reason for it -- see the amendment.
 }
 ```
 
@@ -280,3 +303,58 @@ triggered by something else in the same run: `renderEmail` lists every
 finding of an affected project, tagged NEW or ongoing, not just the ones that
 qualified the project for inclusion. `LEVEL_COLOR` in `notify.js` has a `low`
 entry (muted, not amber) so it reads distinctly from `warn` in the mail body.
+
+## Amendment: deploy correlation
+
+Every function in this estate is 2nd Gen, and a 2nd Gen Cloud Function *is* a
+Cloud Run service -- so `functions/lib/health/deploys.js` reads Cloud Run's
+own service list once per project (`roles/run.viewer`,
+`scripts/health-iam.sh`) and treats each service's `updateTime` as "when did
+this last deploy". Same degradation discipline as `iam.js`: a project whose
+grant hasn't landed, or whose Cloud Run API is off, loses deploy annotations
+and keeps every other finding -- this collector must never throw into the
+sweep. Matching a Cloud Run service to the Cloud Functions/Cloud Run entity
+it belongs to is case-insensitive (Cloud Run service names are always
+lowercase; a function's own name, e.g. `analyzeEntities`, is camelCase) --
+the same fold `analyze.js`'s `dropRunShadows` already applies to pair a
+gen-2 function with its Cloud Run shadow.
+
+**The one rule that matters more than any field below: a deploy never
+resolves a finding.** Resolution is, and stays, exactly what it always was --
+the check stopped firing this run (`planLifecycleUpdate`, unchanged). If a
+redeploy could mark a finding resolved on its own, a redeploy that *didn't*
+fix the bug would silently clear a real, still-true finding -- strictly worse
+than not correlating deploys at all, since a false "resolved" reads exactly
+like good news. Every field this amendment adds is annotation layered
+alongside a `state` decision that has no idea deploys exist.
+
+- `metrics`/`findings` are unaffected except: a finding for a
+  function/run-shaped kind (`function`/`run` `errors`/`silent`/`spike`) may
+  carry a `deployedAt` (see the `ProjectResult.findings` shape above) when
+  its entity has a known deploy time. Absent, not null, when there is none
+  -- cost, quota, and the `sa-key`/`broad-role`/`api-key` hygiene findings
+  never get this field at all, since none of them point at a function or
+  service.
+- `entities[].deployedAt` is the same value the paired finding (if any)
+  carries, always present (null when unknown) since it's shown regardless of
+  whether anything is currently wrong.
+- `health_findings/{key}` gains `deployedAt` (the latest deploy time known
+  for this finding's entity), a capped `deploys` trail (10 entries, oldest
+  dropped), and `deploysSinceFirstSeen` -- the count of times that trail
+  actually grew. This is the payoff: **"still failing, N deploys later"** is
+  the case where a plausible fix shipped and the finding kept firing anyway
+  -- exactly the moment someone would otherwise assume the fix worked and
+  move on. The first sighting of a deploy time establishes a baseline, not a
+  "redeploy since" -- there's no earlier deploy to compare it to yet, so
+  counting it would overstate how many fixes have actually been tried.
+  Deploy history resets on a genuinely fresh occurrence of a key (past the
+  48h reopen window) since that's an unrelated incident, but carries through
+  a within-window flap (same incident, briefly not observed) and through
+  `acked`/`unknown` transitions.
+- `resolvedAfterDeploy` is written only at the moment a finding transitions
+  to `resolved`: the nearest deploy that fell strictly after the finding's
+  `lastSeen` and no later than `resolvedAt`, or null if none did. It is
+  presented as **correlation, never causation** -- the finding could have
+  cleared for an unrelated reason at the same moment -- and any user-facing
+  text built from it should say "correlates with" / "since the last deploy",
+  never "fixed by".

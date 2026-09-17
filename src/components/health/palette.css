@@ -1,12 +1,16 @@
 /*
- * Health dashboard chart palette (plan.md, "Chart layer").
+ * Health dashboard chart palette (plan.md, "Chart layer"; restyle per the
+ * approved health-console mockup).
  *
  * The one law: on this page color means severity and nothing else. Status
- * colors below are reserved for status and never reused for quantity.
- * Quantity charts use the monochrome sequential scale. Only the two identity
- * charts (error kinds, cost by service) use the categorical set, capped at
- * four fixed slots so a category keeps its color across every row on the
- * page.
+ * colors below are reserved for status and never reused for quantity — the
+ * exact hex values are taken from the mockup's `:root` block. Quantity
+ * charts (Series, the Columns findings line) use the monochrome sequential
+ * scale below, which is grey, not blue — the previous blue accent is gone.
+ * The categorical set stays multi-hue: it is the one place on the page that
+ * encodes *identity* (which error kind, which billed service), not
+ * severity or quantity, so collapsing it to grey would destroy the only
+ * thing it's for. See charts.tsx's C5/C6 comments.
  *
  * All values are the ones validated in plan.md against this page's two
  * surfaces (white; dark card #262626) for colorblind separation and
@@ -16,26 +20,35 @@
  * toggle): light values live on :root, dark values apply automatically via
  * prefers-color-scheme, and an explicit [data-theme="dark"] / [data-theme=
  * "light"] on the root element overrides the system preference either way.
+ * The page is light-committed (mockup decision 6): light is the default and
+ * gets the care; dark stays supported for the toggle, not restyled to match.
  */
 
 :root {
   /* Status — reserved, never used for anything else. Identical in both
-     themes; already validated against white and the dark card. */
-  --hc-critical: #d03b3b;
-  --hc-warn: #fab219;
-  --hc-good: #0ca30c;
-  /* Estate hygiene, not an incident — a muted slate/blue-grey, deliberately
-     not a fourth saturated hue and not readable as amber or green. */
-  --hc-low: #64748b;
+     themes; already validated against white and the dark card. Exact hex
+     from the mockup's :root block. */
+  --hc-critical: #c62f2f;
+  --hc-warn: #c07800;
+  --hc-good: #0e8f24;
+  /* Estate hygiene, not an incident — a hue-free grey, deliberately not a
+     fourth saturated hue and not readable as amber or green. */
+  --hc-low: #8a8a8a;
+  /* Neutral chip behind a status pill — the one place a "tint" survives
+     (mockup decision 2): never colored, just a wash the status text/dot
+     sits on. */
+  --hc-wash: #f4f4f4;
 
-  /* Sequential (all quantity charts), light -> dark. Same in both themes. */
-  --hc-seq-1: #cde2fb;
-  --hc-seq-2: #9ec5f4;
-  --hc-seq-3: #6da7ec;
-  --hc-seq-4: #3987e5;
-  --hc-seq-5: #2a78d6;
-  --hc-seq-6: #256abf;
-  --hc-seq-7: #184f95;
+  /* Sequential (all quantity charts — Series, the Columns findings line),
+     light -> dark grey. No hue: these are quantity marks, not severity, and
+     the mockup retires the old blue accent entirely. Same in both themes. */
+  --hc-seq-1: #e4e4e4;
+  --hc-seq-2: #cfcfcf;
+  --hc-seq-3: #b5b5b5;
+  --hc-seq-4: #8a8a8a;
+  --hc-seq-5: #6e6e6e;
+  --hc-seq-6: #4e4e4e;
+  --hc-seq-7: #161616;
 
   /* Categorical (C5/C6 only), fixed slot order, light variant. */
   --hc-cat-1: #2a78d6;
@@ -57,8 +70,17 @@
     --hc-cat-2: #d95926;
     --hc-cat-3: #199e70;
     --hc-cat-4: #c98500;
-    /* Lighter slate so it still reads against a dark card. */
-    --hc-low: #94a3b8;
+    /* Lighter grey so it still reads against a dark card. */
+    --hc-low: #9a9a9a;
+    --hc-wash: rgba(255, 255, 255, 0.06);
+
+    --hc-seq-1: #3a3a3a;
+    --hc-seq-2: #4e4e4e;
+    --hc-seq-3: #656565;
+    --hc-seq-4: #8a8a8a;
+    --hc-seq-5: #adadad;
+    --hc-seq-6: #cfcfcf;
+    --hc-seq-7: #f2f2f2;
 
     --hc-grid: rgba(255, 255, 255, 0.16);
     --hc-baseline: rgba(255, 255, 255, 0.46);
@@ -71,7 +93,16 @@
   --hc-cat-2: #d95926;
   --hc-cat-3: #199e70;
   --hc-cat-4: #c98500;
-  --hc-low: #94a3b8;
+  --hc-low: #9a9a9a;
+  --hc-wash: rgba(255, 255, 255, 0.06);
+
+  --hc-seq-1: #3a3a3a;
+  --hc-seq-2: #4e4e4e;
+  --hc-seq-3: #656565;
+  --hc-seq-4: #8a8a8a;
+  --hc-seq-5: #adadad;
+  --hc-seq-6: #cfcfcf;
+  --hc-seq-7: #f2f2f2;
 
   --hc-grid: rgba(255, 255, 255, 0.16);
   --hc-baseline: rgba(255, 255, 255, 0.46);
