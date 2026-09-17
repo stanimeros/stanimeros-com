@@ -225,11 +225,12 @@ test("entities are capped at LIMITS.entitiesPerProject while entitiesTotal recor
 });
 
 test("an entity's calls reflect the rolling last-24h window, not the newest historical day -- matching what Cloud Console's own 'last 24 hours' shows", () => {
-  // A function with real historical traffic (113 calls/day) but genuinely
-  // zero calls in the rolling last 24h must show calls: 0, not 113 -- the
-  // exact dashboard-vs-Console mismatch this test guards against.
+  // A function with real historical traffic (113 calls/day, every day of the
+  // window -- see dayValues below) but genuinely zero calls in the rolling
+  // last 24h must show calls: 0, not 113 -- the exact dashboard-vs-Console
+  // mismatch this test guards against.
   const breakdowns = {
-    function: { adminGetClient: { calls: { "2026-08-30": 113, "2026-08-31": 113 }, errors: {} } },
+    function: { adminGetClient: { calls: dayValues(113), errors: {} } },
   };
   const rollingBreakdowns = {
     function: { adminGetClient: { calls: {}, errors: {} } }, // zero calls today

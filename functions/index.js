@@ -1,15 +1,12 @@
 const { setGlobalOptions } = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const admin = require("firebase-admin");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 
 const { sendOwnerEmail, escapeHtml } = require("./lib/mailer");
 const { ai, tools, buildSystemInstruction, MODEL } = require("./lib/gemini");
 const { checkAvailability, createBooking } = require("./lib/calendar");
-const { runHealthCheck, buildReport, REPORTS } = require("./lib/health");
-const { FINDINGS, docIdFor } = require("./lib/health/lifecycle");
-const { isoSecond } = require("./lib/health/config");
+const { runHealthCheck, buildReport } = require("./lib/health");
 const {
   appendMessage,
   getHistory,
@@ -311,146 +308,11 @@ exports.runHealthCheckNow = onCall(
   }
 );
 
-// Firestore's automatic single-field index for a field isn't provisioned
-// until the first document carrying that field is written, so an
-// orderBy("runId", ...) query can throw FAILED_PRECONDITION ("requires an
-// index") if it races the very first sweep, or if pruneOldReports ever empties
-// the collection between the health-schema being deployed and the next run.
-// Both are "no reports yet", not a real error.
-function isIndexNotReady(err) {
-  return err.code === 9 || /FAILED_PRECONDITION/.test(err.message || "");
-}
-
-// The dashboard's only data path. Reading through the Admin SDK here is what
-// lets firestore.rules stay deny-all — the client never touches Firestore.
-exports.getHealthReport = onCall({ enforceAppCheck: true }, async (request) => {
-  assertHealthAccess(request);
-  const db = admin.firestore();
-  const { runId, history } = request.data || {};
-
-  if (history) {
-    let snap;
-    try {
-      snap = await db
-        .collection(REPORTS)
-        .orderBy("runId", "desc")
-        .limit(Math.min(Number(history) || 30, 120))
-        .get();
-    } catch (err) {
-      if (!isIndexNotReady(err)) throw err;
-      return { runs: [] };
-    }
-    // Trend only — sending 30 full reports would be megabytes.
-    return {
-      runs: snap.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          runId: doc.id,
-          generated: data.generated,
-          status: data.status,
-          counts: data.counts,
-          costTotal: data.costTotal,
-          findingCount: (data.projects || []).reduce((n, p) => n + p.findings.length, 0),
-        };
-      }),
-    };
-  }
-
-  let doc;
-  try {
-    doc = runId
-      ? await db.collection(REPORTS).doc(runId).get()
-      : (await db.collection(REPORTS)
-          .orderBy("runId", "desc")
-          .limit(1)
-          .get()).docs[0];
-  } catch (err) {
-    if (!isIndexNotReady(err)) throw err;
-    doc = undefined;
-  }
-
-  if (!doc || !doc.exists) throw new HttpsError("not-found", "No report yet.");
-  return doc.data();
-});
-
-// Lifecycle reads for the dashboard's "is this new / did it clear" view
-// (plan.md S1). Filters stay to at most one Firestore-level `where` (on
-// `state`) so this never needs a composite index: `since` is applied in
-// JS after the read. health_findings is a few hundred docs total, so a
-// single-field query plus an in-memory filter is cheaper than it sounds and
-// keeps this callable index-free the same way getHealthReport is.
-exports.getHealthFindings = onCall({ enforceAppCheck: true }, async (request) => {
-  assertHealthAccess(request);
-  const db = admin.firestore();
-  const { state, since } = request.data || {};
-
-  let query = /** @type {FirebaseFirestore.Query} */ (db.collection(FINDINGS));
-  if (state) query = query.where("state", "==", state);
-
-  let snap;
-  try {
-    snap = await query.get();
-  } catch (err) {
-    if (!isIndexNotReady(err)) throw err;
-    return { findings: [] };
-  }
-
-  let findings = snap.docs.map((doc) => doc.data());
-  if (since) findings = findings.filter((f) => f.lastSeen >= since);
-  return { findings };
-});
-
-// Acknowledge (mute) a finding, or clear an existing ack. `until` is an
-// optional ISO timestamp; omitted/null means "acked with no expiry" (plan.md
-// S1.5 covers the auto-un-ack: an acked finding that escalates warn ->
-// critical clears itself on the next sweep regardless of what's stored
-// here). Pass `ack: false` to clear an ack early instead of waiting for it
-// to expire.
-exports.ackFinding = onCall({ enforceAppCheck: true }, async (request) => {
-  const uid = assertHealthAccess(request);
-  const { key, until = null, ack = true } = request.data || {};
-  if (!key || typeof key !== "string") throw new HttpsError("invalid-argument", "Missing key.");
-
-  const db = admin.firestore();
-  // Same slash-encoding the sweep writes with -- the UI holds the true key.
-  const ref = db.collection(FINDINGS).doc(docIdFor(key));
-  const doc = await ref.get();
-  if (!doc.exists) throw new HttpsError("not-found", "No such finding.");
-
-  // Only two states exist, open and acked, so this is a straight toggle.
-  const current = doc.data().state;
-  if (ack) {
-    await ref.set({ state: "acked", ackedUntil: until, ackedBy: uid }, { merge: true });
-  } else {
-    const state = current === "acked" ? "open" : current;
-    await ref.set({ state, ackedUntil: null, ackedBy: null }, { merge: true });
-  }
-  return { key, acked: !!ack };
-});
-
-// Per-viewer "have I seen this" marker (plan.md S1.4). Deliberately only
-// ever called explicitly by the user (Mark all as seen, or the frontend's
-// own 30s-on-a-later-run heuristic) -- never wire this to page load, or a
-// refresh wipes the "since you last visited" window this exists to give.
-exports.markHealthSeen = onCall({ enforceAppCheck: true }, async (request) => {
-  const uid = assertHealthAccess(request);
-  const { runId } = request.data || {};
-  if (!runId || typeof runId !== "string") throw new HttpsError("invalid-argument", "Missing runId.");
-
-  const db = admin.firestore();
-  await db.collection("health_seen").doc(uid).set({
-    lastViewedRunId: runId,
-    lastViewedAt: isoSecond(),
-  });
-  return { ok: true };
-});
-
-exports.getHealthSeen = onCall({ enforceAppCheck: true }, async (request) => {
-  const uid = assertHealthAccess(request);
-  const db = admin.firestore();
-  const doc = await db.collection("health_seen").doc(uid).get();
-  return doc.exists ? doc.data() : { lastViewedRunId: null, lastViewedAt: null };
-});
+// getHealthReport, getHealthFindings, ackFinding, markHealthSeen and
+// getHealthSeen used to live here as callables. firestore.rules now gates
+// health_reports/health_findings/health_seen directly on request.auth.uid
+// (the single admin account), so the dashboard reads/writes Firestore
+// straight from the client (src/lib/firebase.ts) instead.
 
 // Pure helpers, exported for unit testing only — not part of the deployed
 // function surface (Firebase only deploys the `exports.<name>` onCall/onSchedule

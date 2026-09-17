@@ -16,6 +16,19 @@ function median(values) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+// monitoring.js only emits a day for a Cloud Monitoring delta metric when
+// something actually happened that day -- a quiet day isn't a 0, it's just
+// absent. Left alone, that means a metric which fired on 2 of the last 14
+// days gets its baseline taken as the median of those 2 busy days, not of 14
+// mostly-silent ones -- a short burst then reads as the "typical day", and
+// the entity looks incorrectly silent/spiking against it forever after.
+// Padding to the full window before taking the median is what makes a silent
+// stretch actually pull the baseline down.
+function medianOverWindow(values, windowDays) {
+  const padded = values.length < windowDays ? values.concat(Array(windowDays - values.length).fill(0)) : values;
+  return median(padded);
+}
+
 function formatValue(value, unit) {
   if (unit === "bytes") {
     let size = Number(value);
@@ -96,7 +109,7 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
   }
   const days = Object.keys(historyTotals).sort();
   const history = days.map((d) => historyTotals[d]);
-  const baseline = median(history);
+  const baseline = medianOverWindow(history, cfg.baselineDays);
 
   const isFailure = FAILURE_LABELS[spec.key];
   let latest = 0;
@@ -174,11 +187,11 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
 // One entity's shape from its two windows, or null if it isn't active in
 // either -- pulled out of the loop below so it has no opinion on findings,
 // only on the numbers.
-function buildEntity(name, kind, data, rollingData) {
+function buildEntity(name, kind, data, rollingData, baselineDays) {
   const days = [...new Set([...Object.keys(data.calls), ...Object.keys(data.errors)])].sort();
   const calls = days.map((d) => data.calls[d] || 0);
   const errors = days.map((d) => data.errors[d] || 0);
-  const callsBaseline = calls.length ? median(calls) : 0;
+  const callsBaseline = calls.length ? medianOverWindow(calls, baselineDays) : 0;
 
   // Rolling 24h "now" -- summed across whatever day key(s) the window
   // straddles, same reasoning as analyzeMetric's rollingData handling.
@@ -222,7 +235,7 @@ function analyzeEntities(projectId, breakdowns, rollingBreakdowns, cfg, findings
     for (const name of names) {
       const data = byName[name] || { calls: {}, errors: {} };
       const rollingData = rollingByName[name] || { calls: {}, errors: {} };
-      const entity = buildEntity(name, kind, data, rollingData);
+      const entity = buildEntity(name, kind, data, rollingData, cfg.baselineDays);
       if (entity) entities.push(entity);
     }
   }
