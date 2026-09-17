@@ -168,4 +168,4 @@ function dropRunShadows(entities) {
   return { entities: kept, shadowedCalls };
 }
 
-module.exports = { timeseries, breakdown, dropRunShadows, windowFor, rollingWindow, isoSecond };
+module.exports = { timeseries, breakdown, dropRunShadows, windowFor, rollingWindow };

@@ -5,10 +5,11 @@ import Health from '@/page-content/Health'
 
 <!--
   Internal dashboard. The page shell is public and static like every other page
-  on the site — only the data behind it is gated, by the getHealthReport
-  callable's App Check + UID check. So nothing sensitive may be rendered here at
-  build time: no project list, no UIDs, no config. Uses a bare layout (no
-  particles/header/footer) since this is a tool, not a marketing page.
+  on the site — only the data behind it is gated, by firestore.rules' admin-UID
+  check on the health_* collections the client reads directly. So nothing
+  sensitive may be rendered here at build time: no project list, no UIDs, no
+  config. Uses a bare layout (no particles/header/footer) since this is a
+  tool, not a marketing page.
 -->
 <BareLayout
   lang="en"

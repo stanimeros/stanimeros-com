@@ -243,7 +243,7 @@ exports.agentReport = onSchedule(
 );
 
 // --------------------------------------------------------------------------
-// System health checker — see plan.md and docs/health-schema.md
+// System health checker — see lib/health/health-schema.md
 // --------------------------------------------------------------------------
 
 // Only this UID may read health data. Kept server-side rather than in

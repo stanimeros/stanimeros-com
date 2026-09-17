@@ -1,7 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { dropRunShadows, windowFor, rollingWindow, isoSecond } = require("../lib/health/monitoring");
+const { dropRunShadows, windowFor, rollingWindow } = require("../lib/health/monitoring");
+const { isoSecond } = require("../lib/health/config");
 
 function entity(overrides) {
   return {
