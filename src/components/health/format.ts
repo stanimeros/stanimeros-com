@@ -3,6 +3,7 @@
 // without a renderer.
 
 import { useCallback, useEffect, useState } from "react"
+import type { Finding, LifecycleFinding } from "./types"
 
 export function formatValue(value: number, unit: string | null) {
   if (unit === "bytes") {
@@ -42,6 +43,37 @@ export function duration(fromIso: string, toIso?: string | null) {
  *  correlate a finding with a deploy (plan.md §2.2). */
 export function exactTime(iso: string) {
   return new Date(iso).toLocaleString()
+}
+
+/** Renders a findings list as Markdown, meant to be pasted straight into an
+ *  agent chat for triage — project, kind, the actual message, and the
+ *  lifecycle facts (first/last seen, runs, flapping, ack state) that give an
+ *  agent enough to judge whether something is new or a known flake. */
+export function findingsToMarkdown(
+  title: string,
+  findings: Finding[],
+  lifecycle?: Map<string, LifecycleFinding>
+): string {
+  const lines = [`# ${title}`, ""]
+  if (findings.length === 0) {
+    lines.push("No findings.")
+    return lines.join("\n")
+  }
+  for (const f of findings) {
+    const life = lifecycle?.get(f.key)
+    const bits: string[] = []
+    if (life) {
+      bits.push(`first seen ${exactTime(life.firstSeen)}`)
+      bits.push(`last seen ${exactTime(life.lastSeen)}`)
+      bits.push(`seen in ${life.runsSeen} run${life.runsSeen === 1 ? "" : "s"}`)
+      if (life.reopenCount > 0) bits.push(`flapping ×${life.reopenCount}`)
+      if (life.state === "acked") bits.push("acked")
+    }
+    const meta = bits.length ? ` (${bits.join(" · ")})` : ""
+    const project = f.projectName ? `**${f.projectName}** — ` : ""
+    lines.push(`- ${project}\`${f.kind}\`: ${f.text}${meta}`)
+  }
+  return lines.join("\n")
 }
 
 /** Every localStorage access wrapped — a private window, cleared site data,

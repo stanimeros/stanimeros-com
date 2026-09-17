@@ -121,7 +121,10 @@ function analyzeMetric(projectId, spec, historyData, rollingData, plan, cfg, fin
       const ratio = latest / baseline;
       findings.push({
         key: findingKey(projectId, "spike", spec.key),
-        level: ratio >= cfg.spikeRatio * 2 ? "critical" : "warn",
+        // Unlike failures/quota/errors, a spike alone isn't evidence
+        // anything is actually broken -- usage running hot is a warn
+        // regardless of how hot, never critical.
+        level: "warn",
         kind: "spike",
         text: `${spec.key} ${formatValue(latest, unit)} vs baseline ${formatValue(baseline, unit)} (${ratio.toFixed(1)}x)`,
       });
@@ -347,15 +350,22 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
   // ERROR-severity log entry is a real error regardless of count -- the
   // dashboard must never show a green "no findings" card next to a nonzero
   // error count, which a floor here would do for any count below it.
-  if (log.count !== null && log.count > 0) {
-    const more = log.truncated ? "+" : "";
+  // One finding per distinct signature, not a single "N error log entries"
+  // rollup -- the table exists to show what actually broke, and a count
+  // hides that. Keyed on source+signature (not count), so an ongoing burst
+  // stays the same open finding across runs instead of reopening every
+  // sweep, and lifecycle (first/last seen, ack) tracks the specific error
+  // instead of the estate's error volume in general.
+  for (const top of log.top || []) {
     findings.push({
-      // Deliberately not keyed on the count: an ongoing error burst is one
-      // problem, not a new one every run.
-      key: findingKey(projectId, "errors", "volume"),
-      level: log.count >= cfg.criticalErrors ? "critical" : "warn",
+      key: findingKey(projectId, "errors", `${top.source}:${top.message}`),
+      level: top.count >= cfg.criticalErrors ? "critical" : "warn",
       kind: "errors",
-      text: `${log.count}${more} error log entries in the last ${logHours}h`,
+      text: `${top.source}: ${top.message}`,
+      // Carried as its own field (not just baked into text) so the UI can
+      // render it as a fixed, never-truncated badge instead of a suffix that
+      // gets clipped along with the rest of a long message.
+      count: top.count,
     });
   }
 
@@ -368,7 +378,11 @@ function analyzeLog(projectId, log, logHours, cfg, findings) {
       key: findingKey(projectId, kind, "log"),
       level: LEVEL_BY_KIND[kind],
       kind,
-      text: `${count}x ${kind.replace(/_/g, " ")} in the last ${logHours}h`,
+      // Count used to lead this sentence ("5x missing index..."); now it's
+      // its own badge in the UI (see Finding.count), so the text doesn't
+      // need to repeat it.
+      text: `${kind.replace(/_/g, " ")} in the last ${logHours}h`,
+      count,
     });
   }
 }

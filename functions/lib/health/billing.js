@@ -146,6 +146,29 @@ function buildQuery(table_) {
   `;
 }
 
+// Same shape as buildQuery, but for the account-level charges that don't
+// belong to any project at all -- invoice-level adjustments, rounding, and
+// similar. These sat invisible: buildQuery's project.id IN UNNEST(...) filter
+// excludes them from every per-project figure, while buildTotalQuery (no
+// filter) counts them into the account total, so the total silently stopped
+// reconciling with the sum of per-project figures the moment one of these
+// showed up.
+function buildOtherQuery(table_) {
+  const table = tableRef(table_);
+  return `
+    SELECT
+      service.description AS service,
+      DATE(usage_start_time) AS day,
+      ${COST_EXPR} AS cost,
+      ANY_VALUE(currency) AS currency
+    FROM ${table}
+    WHERE usage_start_time >= @windowStart
+      AND usage_start_time < @windowEnd
+      AND project.id IS NULL
+    GROUP BY service, day
+  `;
+}
+
 // No window, no project filter -- just "what's the newest day this export
 // actually has". Cheap (MAX over one column) and it's the only way to tell
 // "cost: null because this is a Spark project" apart from "cost: null
@@ -229,6 +252,14 @@ function buildCostObject(dailyRows, prevRows, now) {
 }
 
 // -> { [projectId]: CostObject | null }
+//
+// `asOf` anchors the window's end -- defaults to wall-clock now, but the
+// caller passes the export's actual latest day (costDataThrough) instead.
+// Anchoring to now() is wrong whenever the export is behind: a "last 30
+// days" window measured from today finds nothing once the export has
+// drifted more than 30 days behind, even though real data sits right there
+// in BigQuery -- the export catching up shouldn't be a precondition for
+// this tab showing anything at all.
 async function fetchCosts(projectIds, opts) {
   const {
     token,
@@ -236,12 +267,13 @@ async function fetchCosts(projectIds, opts) {
     datasetId,
     tableId = defaultTableId(),
     windowDays = 30,
+    asOf,
   } = opts || {};
 
   const result = nullResult(projectIds);
   if (!projectIds.length) return result;
 
-  const now = new Date();
+  const now = asOf ? new Date(asOf) : new Date();
   const windowEnd = now.toISOString();
   const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000).toISOString();
   const prevWindowEnd = windowStart;
@@ -292,7 +324,48 @@ async function fetchCosts(projectIds, opts) {
   }
 }
 
+// -> CostObject | null. Same shape as one project's entry from fetchCosts,
+// for the charges buildOtherQuery finds: account-level, no project.id at
+// all. `asOf` — see fetchCosts above; same anchor, same reason.
+async function fetchOtherCost(opts) {
+  const {
+    token,
+    datasetProject,
+    datasetId,
+    tableId = defaultTableId(),
+    windowDays = 30,
+    asOf,
+  } = opts || {};
+
+  const now = asOf ? new Date(asOf) : new Date();
+  const windowEnd = now.toISOString();
+  const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+  const prevWindowEnd = windowStart;
+  const prevWindowStart = new Date(now.getTime() - 2 * windowDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const queryOpts = { token, datasetProject };
+  const table = { datasetProject, datasetId, tableId };
+
+  try {
+    const query = buildOtherQuery(table);
+    const [currentRows, prevRows] = await Promise.all([
+      runQuery(query, [dateParam("windowStart", windowStart), dateParam("windowEnd", windowEnd)], queryOpts),
+      runQuery(query, [dateParam("windowStart", prevWindowStart), dateParam("windowEnd", prevWindowEnd)], queryOpts),
+    ]);
+    if (!currentRows.length) return null; // nothing unattributed this window -> null, not 0
+    return buildCostObject(currentRows, prevRows, now);
+  } catch (err) {
+    if (isExportNotReady(err)) {
+      console.log(`billing: export not ready (${datasetProject}.${datasetId}.${tableId}) -- returning null other cost`);
+    } else {
+      console.error("billing: fetchOtherCost failed", err);
+    }
+    return null;
+  }
+}
+
 // -> { costTotal, costCurrency, costWindowDays }
+// `asOf` — see fetchCosts above; same anchor, same reason.
 async function fetchBillingTotal(opts) {
   const {
     token,
@@ -300,11 +373,12 @@ async function fetchBillingTotal(opts) {
     datasetId,
     tableId = defaultTableId(),
     windowDays = 30,
+    asOf,
   } = opts || {};
 
   const fallback = { costTotal: null, costCurrency: "EUR", costWindowDays: windowDays };
 
-  const now = new Date();
+  const now = asOf ? new Date(asOf) : new Date();
   const windowEnd = now.toISOString();
   const windowStart = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
@@ -355,10 +429,12 @@ async function fetchCostDataThrough(opts) {
 
 module.exports = {
   fetchCosts,
+  fetchOtherCost,
   fetchBillingTotal,
   fetchCostDataThrough,
   defaultTableId,
   buildQuery,
+  buildOtherQuery,
   buildLatestDayQuery,
   buildTotalQuery,
 };

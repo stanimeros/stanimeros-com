@@ -3,6 +3,7 @@ import {
   Activity,
   AlertCircle,
   CircleDollarSign,
+  FolderKanban,
   LayoutDashboard,
   ListFilter,
   Loader2,
@@ -16,6 +17,7 @@ import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   watchAuth,
   signInWithGoogle,
@@ -34,7 +36,6 @@ import {
   LEVEL_TEXT,
   LEVEL_LABEL,
   SEVERITY_TABS,
-  TAB_FOR_LEVEL,
   TAB_VALUES,
 } from "@/components/health/levels"
 import {
@@ -48,6 +49,7 @@ import { StatusIcon } from "@/components/health/primitives"
 import { OverviewTab } from "@/components/health/tab-overview"
 import { SeverityTab, ErrorLogPanels } from "@/components/health/tab-severity"
 import { CostTab } from "@/components/health/tab-cost"
+import { ProjectCard } from "@/components/health/projects"
 
 /** One filter row above everything it scopes. Project only — the severity
  *  tabs are the level filter now, and a second control that could contradict
@@ -67,19 +69,19 @@ function FilterBar({
         <ListFilter className="size-3.5" aria-hidden="true" />
         Filter
       </span>
-      <select
-        value={projectFilter}
-        onChange={(e) => onProjectFilterChange(e.target.value)}
-        aria-label="Filter by project"
-        className="min-w-0 rounded-md border border-border bg-background px-2 py-1 text-xs"
-      >
-        <option value="">All projects</option>
-        {projects.map((p) => (
-          <option key={p.project} value={p.project}>
-            {p.name}
-          </option>
-        ))}
-      </select>
+      <Select value={projectFilter || "__all__"} onValueChange={(v) => onProjectFilterChange(v === "__all__" ? "" : v)}>
+        <SelectTrigger size="sm" aria-label="Filter by project" className="min-w-0 text-xs">
+          <SelectValue placeholder="All projects" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="__all__">All projects</SelectItem>
+          {projects.map((p) => (
+            <SelectItem key={p.project} value={p.project}>
+              {p.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
       {projectFilter && (
         <button
           type="button"
@@ -382,7 +384,7 @@ export default function Health() {
               {busy ? "Running…" : "Run now"}
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon"
               onClick={() => setTheme(theme === "light" ? "dark" : "light")}
               title={theme === "light" ? "Switch to dark mode" : "Switch to light mode"}
@@ -391,7 +393,7 @@ export default function Health() {
               {theme === "light" ? <Moon aria-hidden="true" /> : <Sun aria-hidden="true" />}
             </Button>
             <Button
-              variant="ghost"
+              variant="outline"
               size="icon"
               onClick={() => signOut()}
               title="Sign out"
@@ -466,22 +468,33 @@ export default function Health() {
             {/* One tab per severity, which is how the dashboard is actually
                 read ("what's broken, what's odd, what's noise") — the old
                 Projects/Errors split was the same findings cut two ways. */}
-            <TabsList className="grid w-full grid-cols-5 bg-muted sm:flex">
+            <TabsList className="grid w-full grid-cols-6 bg-muted sm:flex">
               <TabsTrigger value="overview" className="sm:flex-1">
                 <LayoutDashboard className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Overview</span>
               </TabsTrigger>
-              {SEVERITY_TABS.map(({ value, level, label, icon: Icon }) => (
-                <TabsTrigger key={value} value={value} className="sm:flex-1">
-                  <Icon className={`size-4 ${LEVEL_TEXT[level]}`} aria-hidden="true" />
-                  <span className="hidden sm:inline">{label}</span>
-                  {findingCounts[level] > 0 && (
-                    <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                      {findingCounts[level]}
-                    </Badge>
-                  )}
-                </TabsTrigger>
-              ))}
+              {SEVERITY_TABS.map(({ value, level, label, icon: Icon }) => {
+                // The Errors badge is the actual (raw) Cloud Logging error
+                // count, not a count of critical findings — same definition
+                // used on Overview. Warnings/low have no raw-log equivalent,
+                // so those stay finding counts.
+                const badgeCount = level === "critical" ? errorTotal : findingCounts[level]
+                return (
+                  <TabsTrigger key={value} value={value} className="sm:flex-1">
+                    <Icon className={`size-4 ${LEVEL_TEXT[level]}`} aria-hidden="true" />
+                    <span className="hidden sm:inline">{label}</span>
+                    {badgeCount > 0 && (
+                      <Badge variant="secondary" className="h-4 px-1 text-[10px]">
+                        {badgeCount}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                )
+              })}
+              <TabsTrigger value="projects" className="sm:flex-1">
+                <FolderKanban className="size-4" aria-hidden="true" />
+                <span className="hidden sm:inline">Projects</span>
+              </TabsTrigger>
               <TabsTrigger value="cost" className="sm:flex-1">
                 <CircleDollarSign className="size-4" aria-hidden="true" />
                 <span className="hidden sm:inline">Cost</span>
@@ -502,14 +515,14 @@ export default function Health() {
               <OverviewTab
                 report={report}
                 projects={projects}
-                history={chronological}
                 resolved={resolved}
                 lifecycle={lifecycle}
-                isNew={isNew}
-                onAck={onAck}
+                findingCounts={findingCounts}
                 errorTotal={errorTotal}
-                onSelectRun={(runId) => load(runId)}
-                onOpenLevel={(level) => setTab(TAB_FOR_LEVEL[level])}
+                onSelectProject={(project, tab) => {
+                  setProjectFilter(project.project)
+                  setTab(tab)
+                }}
               />
             </TabsContent>
 
@@ -527,6 +540,14 @@ export default function Health() {
                 </SeverityTab>
               </TabsContent>
             ))}
+
+            <TabsContent value="projects">
+              <div className="space-y-3">
+                {filteredProjects.map((project) => (
+                  <ProjectCard key={project.project} project={project} />
+                ))}
+              </div>
+            </TabsContent>
 
             <TabsContent value="cost">
               <CostTab report={report} projects={projects} />

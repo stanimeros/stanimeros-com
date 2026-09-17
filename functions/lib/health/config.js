@@ -132,13 +132,16 @@ const LEVEL_ORDER = ["critical", "warn", "low", "ok"];
 // addition here.
 //
 // A handful of kinds are deliberately *not* here because they're graduated
-// by magnitude rather than flat: spike/failures/quota/errors escalate on a
-// ratio, share, or count against a cfg.* threshold; sa-key escalates on key
+// by magnitude rather than flat: failures/quota/errors escalate on a
+// share or count against a cfg.* threshold; sa-key escalates on key
 // age (cfg.saKeyCriticalDays); broad-role depends on whether the account is
 // GCP's own default agent (iam.js's isDefaultAgent) or a hand-created one.
-// Those stay computed in analyze.js, next to the threshold they compare
-// against -- putting only half of a graduated decision in a table would be
-// more confusing than keeping it whole.
+// spike is graduated too, but only ever to warn -- usage running hot, on its
+// own, is never evidence of a real failure, however large the ratio; it stays
+// out of this table only because analyze.js decides it next to spikeRatio,
+// not because it can reach critical. Those stay computed in analyze.js, next
+// to the threshold they compare against -- putting only half of a graduated
+// decision in a table would be more confusing than keeping it whole.
 //
 // Three tiers, not two: `critical` is a real failure, `warn` is something
 // off but nothing failing, `low` is estate hygiene that's true but not an
@@ -186,7 +189,7 @@ const OVERRIDES = {
 const LIMITS = {
   entitiesPerProject: 25,
   topErrorsPerProject: 10,
-  reportRetentionDays: 180,
+  reportRetentionDays: 90,
   // health_findings/{key}: `resolved` docs are pruned this long after
   // resolvedAt; `open`/`unknown`/`acked` are kept forever since an open
   // finding is by definition still true (plan.md S1.8).

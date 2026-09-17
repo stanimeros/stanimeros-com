@@ -64,30 +64,73 @@ export interface StatusBandRun {
   counts?: Partial<Record<Level | "total", number>>
 }
 
+/** A run's cell as a gradient of its own severity mix — critical, then warn,
+ *  then low, then ok, each sized to its share of the run's projects — rather
+ *  than one flat color for whichever was worst. A run that's "critical" on
+ *  one project out of fifteen should not paint the same as one that's
+ *  critical everywhere. Falls back to the flat status color when a run
+ *  carries no counts (older history rows) or nothing to divide. */
+function bandBackground(run: StatusBandRun): string {
+  const counts = run.counts
+  if (!counts) return HEALTH_STATUS_VAR[run.status]
+  const segments = (["critical", "warn", "low", "ok"] as const)
+    .map((level) => ({ level, value: counts[level] ?? 0 }))
+    .filter((s) => s.value > 0)
+  const total = segments.reduce((sum, s) => sum + s.value, 0)
+  if (total === 0) return HEALTH_STATUS_VAR[run.status]
+  if (segments.length === 1) return HEALTH_STATUS_VAR[segments[0].level]
+
+  // Top to bottom, worst first — a vertical stack reads as a tiny bar chart
+  // rather than a smear, and matches how Columns/StackedBar stack elsewhere.
+  let pos = 0
+  const stops: string[] = []
+  for (const seg of segments) {
+    const color = HEALTH_STATUS_VAR[seg.level]
+    const pct = (seg.value / total) * 100
+    stops.push(`${color} ${pos}%`, `${color} ${pos + pct}%`)
+    pos += pct
+  }
+  return `linear-gradient(to bottom, ${stops.join(", ")})`
+}
+
 /**
- * One cell per run, oldest left, filled with that run's status color.
- * Stays on one line at ~90 cells (flex-1 cells) and degrades to a handful
- * of wide cells at 5 — the layout is the same at both sizes, only the cell
- * width changes.
+ * One cell per run, oldest left, colored as a vertical gradient of that
+ * run's own severity mix (see `bandBackground`). Cells stretch (`flex-1`)
+ * to fill the row whatever the run count is — height, not a width cap, is
+ * what keeps each one reading as a thin column rather than a tile. Padded
+ * on the left with neutral, non-interactive placeholders up to `minBars`,
+ * so the band doesn't visibly widen bar-by-bar over a project's first
+ * few runs — only real history ever shrinks it below that floor.
  */
 export function StatusBand({
   runs,
   activeRunId,
   onSelectRun,
   className,
+  minBars = 90,
 }: {
   runs: StatusBandRun[]
   activeRunId?: string
   onSelectRun?: (runId: string) => void
   className?: string
+  minBars?: number
 }) {
   if (runs.length === 0) return null
+  const placeholders = Math.max(0, minBars - runs.length)
   return (
     <div
       role="group"
       aria-label="Run history status band"
-      className={`flex h-7 w-full items-stretch gap-[2px] ${className ?? ""}`}
+      className={`flex h-14 w-full items-stretch gap-[3px] ${className ?? ""}`}
     >
+      {Array.from({ length: placeholders }, (_, i) => (
+        <span
+          key={`empty-${i}`}
+          aria-hidden="true"
+          className="min-w-[2px] flex-1 rounded-[1px]"
+          style={{ background: "var(--hc-track)" }}
+        />
+      ))}
       {runs.map((run) => {
         const exact = new Date(run.generated).toLocaleString()
         const countsText = run.counts
@@ -95,7 +138,7 @@ export function StatusBand({
           : ""
         const label = `${LEVEL_LABEL[run.status]} · ${exact}${countsText}`
         return (
-          <span key={run.runId} className="group/hcband relative min-w-[3px] flex-1">
+          <span key={run.runId} className="group/hcband relative min-w-[2px] flex-1">
             <button
               type="button"
               onClick={onSelectRun ? () => onSelectRun(run.runId) : undefined}
@@ -104,7 +147,7 @@ export function StatusBand({
               className={`block h-full w-full rounded-[1px] ${onSelectRun ? "cursor-pointer" : "cursor-default"} ${
                 run.runId === activeRunId ? "ring-2 ring-foreground/60 ring-offset-1 ring-offset-background" : ""
               }`}
-              style={{ backgroundColor: HEALTH_STATUS_VAR[run.status] }}
+              style={{ background: bandBackground(run) }}
             />
             <MarkTooltip groupName="hcband" text={label} />
           </span>

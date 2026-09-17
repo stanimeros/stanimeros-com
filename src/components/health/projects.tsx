@@ -5,32 +5,19 @@
 
 import { useState } from "react"
 import { Card } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible"
-import { DivergingBar, Meter, Series } from "@/components/health/charts"
+import { Series } from "@/components/health/charts"
 import type { Level, LifecycleFinding, ProjectResult } from "./types"
 import { LEVEL_BG, LEVEL_ORDER, LEVEL_STYLE, LEVEL_TEXT } from "./levels"
 import { duration, formatMoney, formatValue, timeAgo } from "./format"
-import { AckedRow, CostSummary, GroupedFindings, StatusIcon } from "./primitives"
+import { CostSummary, ExpandArrow, StatusIcon } from "./primitives"
 
-export function ProjectCard({
-  project,
-  lifecycle,
-  isNew,
-  onAck,
-}: {
-  project: ProjectResult
-  lifecycle?: Map<string, LifecycleFinding>
-  isNew?: (key: string) => boolean
-  onAck?: (key: string, ack: boolean) => void
-}) {
+// Findings/errors are deliberately not shown here — they live on the
+// severity tabs and Overview. This card is metrics only: calls, reads,
+// storage etc. per function, against baseline.
+export function ProjectCard({ project }: { project: ProjectResult }) {
   const [open, setOpen] = useState(false)
   const metrics = Object.entries(project.metrics).filter(([key]) => !key.endsWith(".failed"))
-
-  // 1.5 — acked findings stop counting toward the header status/count; they
-  // stay fully visible, just moved into their own row below.
-  const activeFindings = project.findings.filter((f) => lifecycle?.get(f.key)?.state !== "acked")
-  const ackedFindings = project.findings.filter((f) => lifecycle?.get(f.key)?.state === "acked")
 
   return (
     <Card
@@ -48,48 +35,25 @@ export function ProjectCard({
                 {project.plan}
               </span>
             </div>
-            <div className={`mt-1 text-sm ${LEVEL_TEXT[project.status]}`}>
-              {activeFindings.length
-                ? `${activeFindings.length} finding${activeFindings.length === 1 ? "" : "s"}`
-                : "No findings"}
-              {ackedFindings.length > 0 ? ` · ${ackedFindings.length} acked` : ""}
-              {project.errorCount !== null && project.errorCount > 0
-                ? ` · ${project.errorCount}${project.errorTruncated ? "+" : ""} errors`
-                : ""}
-              {/* null means the log read failed — never render that as zero. */}
-              {project.errorCount === null ? " · errors unread" : ""}
-            </div>
           </div>
-          <div className="shrink-0 text-right">
-            {project.cost ? (
-              <div className="text-sm">{formatMoney(project.cost.last30d, project.cost.currency)}</div>
-            ) : null}
-            <div className="text-xs text-muted-foreground">{open ? "hide" : "details"}</div>
+          <div className="flex shrink-0 items-center gap-1.5 text-right">
+            <div>
+              {project.cost ? (
+                <div className="text-sm">{formatMoney(project.cost.last30d, project.cost.currency)}</div>
+              ) : null}
+              <div className="text-xs text-muted-foreground">{open ? "hide" : "details"}</div>
+            </div>
+            <ExpandArrow open={open} className="size-3.5" />
           </div>
         </CollapsibleTrigger>
-
-        <GroupedFindings findings={activeFindings} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
-        <AckedRow findings={ackedFindings} lifecycle={lifecycle} onAck={onAck} />
 
         <CollapsibleContent className="space-y-4 overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down data-[state=open]:mt-4 data-[state=open]:border-t data-[state=open]:border-border data-[state=open]:pt-3">
           {metrics.length > 0 && (
             <div className="space-y-1.5">
-              <p className="text-xs text-muted-foreground">
-                Last 24h vs the 14-day median — as of the last sweep, not a live counter, and calls are
-                summed across every function in the project.
-              </p>
-              {/* C7 — every metric against its own baseline on one shared
-                  scale, so the one that is off is visible without reading
-                  any numbers. The per-metric detail follows below it. */}
-              <DivergingBar
-                rows={metrics.map(([key, metric]) => ({
-                  key,
-                  label: key,
-                  value: metric.latest,
-                  baseline: metric.baseline,
-                  severity: project.findings.some((f) => f.text.startsWith(key)) ? project.status : undefined,
-                }))}
-              />
+              {/* This window is genuinely 24h regardless of logHours — see
+                  rollingWindow() in monitoring.js. Don't "fix" it to match
+                  the error-log window; they're unrelated numbers. */}
+              <p className="text-xs text-muted-foreground">Last 24h vs the 14-day median</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {metrics.map(([key, metric]) => (
                   <div key={key} className="flex items-center justify-between gap-3 rounded-md bg-muted/50 px-2 py-1.5">
@@ -126,12 +90,7 @@ export function ProjectCard({
                   <tr className="text-left">
                     <th className="py-1 pr-2 font-normal">Function</th>
                     <th className="py-1 pr-2 text-right font-normal">Calls</th>
-                    <th className="py-1 pr-2 text-right font-normal">Baseline</th>
-                    <th className="py-1 pr-2 text-right font-normal">Errors</th>
-                    <th className="py-1 pr-2 text-right font-normal" title="From Cloud Logging — disagreeing with Errors is itself a signal">
-                      Log
-                    </th>
-                    <th className="py-1 text-right font-normal">Rate</th>
+                    <th className="py-1 text-right font-normal">Baseline</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -139,21 +98,8 @@ export function ProjectCard({
                     <tr key={`${entity.kind}:${entity.name}`} className="border-t border-border/60">
                       <td className="py-1 pr-2 font-mono text-xs">{entity.name}</td>
                       <td className="py-1 pr-2 text-right">{formatValue(entity.calls, null)}</td>
-                      <td className="py-1 pr-2 text-right text-muted-foreground">
+                      <td className="py-1 text-right text-muted-foreground">
                         {formatValue(entity.callsBaseline, null)}
-                      </td>
-                      <td className="py-1 pr-2 text-right">{formatValue(entity.errors, null)}</td>
-                      <td className="py-1 pr-2 text-right text-muted-foreground">
-                        {formatValue(entity.logErrors, null)}
-                      </td>
-                      {/* C8 — the 5% warn line is drawn on the track, so it
-                          doesn't have to be remembered. */}
-                      <td className="w-28 py-1">
-                        {entity.calls ? (
-                          <Meter value={entity.errorRate * 100} max={100} threshold={5} />
-                        ) : (
-                          <span className="block text-right text-muted-foreground">—</span>
-                        )}
                       </td>
                     </tr>
                   ))}
@@ -168,18 +114,6 @@ export function ProjectCard({
           )}
 
           {project.cost && <CostSummary cost={project.cost} />}
-
-          {project.topErrors.length > 0 && (
-            <ul className="space-y-1 text-xs">
-              {project.topErrors.map((error, i) => (
-                <li key={i} className="flex gap-2">
-                  <span className="shrink-0 text-muted-foreground">{error.count}×</span>
-                  <span className="shrink-0 font-mono">{error.source}</span>
-                  <span className="truncate text-muted-foreground">{error.message}</span>
-                </li>
-              ))}
-            </ul>
-          )}
         </CollapsibleContent>
       </Collapsible>
     </Card>
@@ -321,14 +255,25 @@ export function ProjectRow({
             <span className="text-[9px] tracking-wide text-muted-foreground uppercase">findings</span>
             <span className="text-[13px] text-foreground tabular-nums">{active.length}</span>
           </span>
+          <ExpandArrow open={open} className="size-3.5" />
         </span>
       </div>
 
-      {open && (
-        <div className="border-t border-border bg-muted/20 p-3">
-          <ProjectCard project={project} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
+      {/* grid-rows 0fr/1fr, not a plain `open && <div>` — animates open/close
+          without measuring content height (ProjectCard's own metrics/cost
+          layout shifts as data streams in, so a fixed max-height would either
+          clip it or leave dead space). */}
+      <div
+        className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="min-h-0">
+          <div className="border-t border-border bg-muted/20 p-3">
+            <ProjectCard project={project} />
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -17,6 +17,23 @@ export const LEVEL_STYLE: Record<Level, string> = {
   ok: "border-l-[3px] border-l-transparent",
 }
 
+// Overview's project cards: a soft tint of the whole card instead of the
+// stripe used elsewhere, so the grid reads as color blocks at a glance.
+export const LEVEL_TINT: Record<Level, string> = {
+  critical: "border-[var(--hc-critical)]/30 bg-[var(--hc-critical)]/10",
+  warn: "border-[var(--hc-warn)]/30 bg-[var(--hc-warn)]/10",
+  low: "border-[var(--hc-low)]/30 bg-[var(--hc-low)]/10",
+  ok: "border-border bg-card",
+}
+
+// Overview's per-number chips: a stronger tint than LEVEL_TINT, background
+// only (no border), used behind a count when it's non-zero.
+export const LEVEL_CHIP_BG: Record<Exclude<Level, "ok">, string> = {
+  critical: "bg-[var(--hc-critical)]/15",
+  warn: "bg-[var(--hc-warn)]/15",
+  low: "bg-[var(--hc-low)]/15",
+}
+
 // The fill for a row's own stripe `<span>` (a background, not a border).
 export const LEVEL_BG: Record<Level, string> = {
   critical: "bg-[var(--hc-critical)]",
@@ -41,8 +58,12 @@ export const LEVEL_ICON: Record<Level, typeof CheckCircle2> = {
   ok: CheckCircle2,
 }
 
+// "critical" (the Level value) is always labeled "Errors" — the category
+// name used everywhere on screen. Kept distinct from the raw Cloud Logging
+// line count (labeled "log lines"), which is a different, unrelated number
+// that happens to also be about errors.
 export const LEVEL_LABEL: Record<Level, string> = {
-  critical: "Critical",
+  critical: "Errors",
   warn: "Warning",
   low: "Low",
   ok: "Healthy",
@@ -63,7 +84,7 @@ export const SEVERITY_TABS: {
   { value: "low", level: "low", label: "Low", icon: Info, emptyText: "Nothing low-severity" },
 ]
 
-export const TAB_VALUES = ["overview", ...SEVERITY_TABS.map((t) => t.value), "cost"]
+export const TAB_VALUES = ["overview", ...SEVERITY_TABS.map((t) => t.value), "projects", "cost"]
 
 export const TAB_FOR_LEVEL: Record<Exclude<Level, "ok">, string> = {
   critical: "errors",

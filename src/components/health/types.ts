@@ -39,6 +39,10 @@ export interface Finding {
    *  (e.g. the estate-wide tier groups on Overview) so the row can name
    *  which project it belongs to. */
   projectName?: string
+  /** How many times this exact thing happened in the window -- only set for
+   *  kinds where that's a real, distinct number (log-derived `errors` and
+   *  the ALWAYS_REPORT kinds in logging.js), not implied by every kind. */
+  count?: number
 }
 
 export interface Metric {
@@ -96,6 +100,10 @@ export interface Report {
   costTotal: number | null
   costCurrency: string
   costWindowDays: number
+  /** Account-level charges with no project.id at all (invoice adjustments,
+   *  rounding) — counted in costTotal but not in any project's own cost, so
+   *  without this the total doesn't reconcile with the sum of projects. */
+  otherCost?: CostBreakdown | null
   /** Newest day present in the billing export, or null when it can't be read. */
   costDataThrough?: string | null
   /** True when the export is behind — see the staleness banner in CostTab. */

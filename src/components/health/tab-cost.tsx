@@ -50,17 +50,14 @@ export function CostTab({ report, projects }: { report: Report; projects: Projec
         />
         <Tile
           label="24h"
-          value={formatMoney(
-            withCost.reduce((sum, p) => sum + p.cost.last24h, 0),
-            report.costCurrency
-          )}
+          // No project with cost data at all means "nothing to sum", not
+          // "zero spend" — matching Total's "—" rather than a misleading
+          // €0.00 for the same underlying reason.
+          value={withCost.length === 0 ? "—" : formatMoney(withCost.reduce((sum, p) => sum + p.cost.last24h, 0), report.costCurrency)}
         />
         <Tile
           label="7d"
-          value={formatMoney(
-            withCost.reduce((sum, p) => sum + p.cost.last7d, 0),
-            report.costCurrency
-          )}
+          value={withCost.length === 0 ? "—" : formatMoney(withCost.reduce((sum, p) => sum + p.cost.last7d, 0), report.costCurrency)}
           className="col-span-2 sm:col-span-1"
         />
       </div>
@@ -96,6 +93,20 @@ export function CostTab({ report, projects }: { report: Report; projects: Projec
           </ul>
         )}
       </Card>
+
+      {/* Charges with no project.id at all -- invoice adjustments, rounding.
+          These count toward Total above but never toward any project's own
+          figure, so without a card for them the total silently stops
+          reconciling with the per-project sum the moment one shows up. */}
+      {report.otherCost && (
+        <Card className="gap-1 px-4 py-3">
+          <div className="mb-1 text-sm font-medium">Other charges · {report.costWindowDays}d</div>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Not attributed to any project — invoice-level adjustments, rounding, and similar.
+          </p>
+          <CostSummary cost={report.otherCost} />
+        </Card>
+      )}
 
       <CollapsedSection label="Per-project breakdown" count={sorted.length}>
         <div className="space-y-3">

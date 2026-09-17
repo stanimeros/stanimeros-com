@@ -22,7 +22,7 @@ export const HEALTH_STATUS_VAR: Record<Level, string> = {
 }
 
 export const LEVEL_LABEL: Record<Level, string> = {
-  critical: "Critical",
+  critical: "Errors",
   warn: "Warning",
   low: "Low",
   ok: "Healthy",

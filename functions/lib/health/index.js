@@ -11,7 +11,7 @@ const { PROJECTS, METRICS, BREAKDOWNS, BILLING_ACCOUNT, LIMITS, thresholdsFor, i
 const { getAccessToken } = require("./auth");
 const { timeseries, breakdown, windowFor, rollingWindow } = require("./monitoring");
 const { readErrors } = require("./logging");
-const { fetchCosts, fetchBillingTotal, fetchCostDataThrough } = require("./billing");
+const { fetchCosts, fetchOtherCost, fetchBillingTotal, fetchCostDataThrough } = require("./billing");
 const { collectIam } = require("./iam");
 const { collectDeploys } = require("./deploys");
 const { analyzeProject, worstLevel } = require("./analyze");
@@ -114,10 +114,19 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
 
   const ids = projects.map((p) => p.id);
   const billingOpts = { token, datasetProject: HOST_PROJECT, datasetId: process.env.HEALTH_BILLING_DATASET };
-  const [costs, total, costDataThrough] = await Promise.all([
-    fetchCosts(ids, billingOpts),
-    fetchBillingTotal(billingOpts),
-    fetchCostDataThrough(billingOpts),
+  // costDataThrough has to land first: it anchors the windowed queries below
+  // (asOf) instead of wall-clock now, so "last 30 days" means the 30 days
+  // ending at the export's actual newest day. Without this, an export that's
+  // fallen more than windowDays behind finds nothing -- every figure reads
+  // as no-spend even though the data is sitting right there in BigQuery.
+  const costDataThrough = await fetchCostDataThrough(billingOpts);
+  const asOf = costDataThrough
+    ? new Date(new Date(`${costDataThrough}T00:00:00Z`).getTime() + 86400000)
+    : undefined;
+  const [costs, otherCost, total] = await Promise.all([
+    fetchCosts(ids, { ...billingOpts, asOf }),
+    fetchOtherCost({ ...billingOpts, asOf }),
+    fetchBillingTotal({ ...billingOpts, asOf }),
   ]);
 
   // A1: `cost: null` on its own can't tell "Spark project, normal" apart
@@ -180,6 +189,11 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
     costTotal: total ? total.costTotal : null,
     costCurrency: total ? total.costCurrency : "EUR",
     costWindowDays: total ? total.costWindowDays : 30,
+    // Account-level charges with no project.id at all (invoice adjustments,
+    // rounding) -- counted in costTotal but excluded from every per-project
+    // figure, so without this the total silently stopped reconciling with
+    // the sum of projects the moment one of these showed up.
+    otherCost,
     costDataThrough,
     costStale,
     newFindingKeys: [],
@@ -193,7 +207,7 @@ async function previousState(db) {
   return snap.exists ? snap.data() : { findingKeys: [] };
 }
 
-// 180 days x 3 runs ≈ 540 documents, so a bounded batch per run is plenty —
+// 90 days x 3 runs ≈ 270 documents, so a bounded batch per run is plenty —
 // no need to loop until empty and risk running long.
 async function pruneOldReports(db) {
   // Same second-precision shape the reports are written with — `generated` is

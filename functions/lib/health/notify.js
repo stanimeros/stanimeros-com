@@ -62,7 +62,7 @@ function renderEmail(report, keys, dashboardUrl) {
   const affected = report.projects.filter((p) => p.findings.some(isNew));
 
   const parts = [
-    `<h2 style="margin:0 0 4px">Firebase health — ${keys.length} new finding${keys.length === 1 ? "" : "s"}</h2>`,
+    `<h2 style="margin:0 0 4px">System health — ${keys.length} new finding${keys.length === 1 ? "" : "s"}</h2>`,
     `<p style="margin:0 0 16px;color:#666;font-size:13px">`,
     `${escapeHtml(report.generated)} · ${report.counts.critical} critical, ${report.counts.warn} warning, `,
     `${report.counts.ok} clean of ${report.counts.total}</p>`,

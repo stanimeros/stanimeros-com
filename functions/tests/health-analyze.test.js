@@ -114,12 +114,12 @@ test("analyzeProject flags a spike at >= 3x baseline over the floor as a warn fi
   assert.equal(finding.level, "warn");
 });
 
-test("analyzeProject escalates a spike to critical at >= 6x baseline", () => {
+test("analyzeProject keeps a spike at warn even at a huge ratio -- usage running hot is never critical on its own", () => {
   const spec = { key: "firestore.reads", type: "x", kind: "delta" };
   const result = analyzeProject(spikeArgs(spec, 100, 700)); // 7x baseline
   const finding = result.findings.find((f) => f.kind === "spike");
   assert.ok(finding);
-  assert.equal(finding.level, "critical");
+  assert.equal(finding.level, "warn");
 });
 
 test("analyzeProject reports a stall when a metric with a real baseline drops to exactly zero over the rolling 24h", () => {
@@ -382,7 +382,15 @@ test("run.requests findings are suppressed project-wide once any shadowing exist
 
 test("a single real error log entry is critical -- no floor, unlike the Monitoring-derived checks", () => {
   const result = analyzeProject(
-    baseArgs({ log: { count: 1, truncated: false, kinds: {}, sources: { "function:x": 1 }, top: [] } })
+    baseArgs({
+      log: {
+        count: 1,
+        truncated: false,
+        kinds: {},
+        sources: { "function:x": 1 },
+        top: [{ source: "function:x", message: "boom", count: 1 }],
+      },
+    })
   );
   const finding = result.findings.find((f) => f.kind === "errors");
   assert.ok(finding, "a single error must not be invisible to findings/status");
@@ -393,9 +401,38 @@ test("a single real error log entry is critical -- no floor, unlike the Monitori
   assert.equal(result.status, "critical");
 });
 
+test("each distinct error signature is its own finding, not a single rolled-up count", () => {
+  const result = analyzeProject(
+    baseArgs({
+      log: {
+        count: 3,
+        truncated: false,
+        kinds: {},
+        sources: {},
+        top: [
+          { source: "function:a", message: "boom", count: 2 },
+          { source: "function:b", message: "bang", count: 1 },
+        ],
+      },
+    })
+  );
+  const errorFindings = result.findings.filter((f) => f.kind === "errors");
+  assert.equal(errorFindings.length, 2);
+  assert.ok(errorFindings.some((f) => f.text.includes("function:a") && f.text.includes("boom")));
+  assert.ok(errorFindings.some((f) => f.text.includes("function:b") && f.text.includes("bang")));
+});
+
 test("log errors escalate to critical at cfg.criticalErrors", () => {
   const result = analyzeProject(
-    baseArgs({ log: { count: 100, truncated: false, kinds: {}, sources: {}, top: [] } })
+    baseArgs({
+      log: {
+        count: 100,
+        truncated: false,
+        kinds: {},
+        sources: {},
+        top: [{ source: "function:x", message: "boom", count: 100 }],
+      },
+    })
   );
   const finding = result.findings.find((f) => f.kind === "errors");
   assert.equal(finding.level, "critical");
@@ -609,18 +646,12 @@ test("a project whose only findings are low gets status low, not warn and not ok
 });
 
 test("a project with any critical finding gets status critical, even alongside warns", () => {
-  const spec1 = { key: "firestore.reads", type: "x", kind: "delta" };
-  const spec2 = { key: "firestore.writes", type: "y", kind: "delta" };
-  const result = analyzeProject(
-    baseArgs({
-      metricSpecs: [spec1, spec2],
-      metricData: { "firestore.reads": historySeries(100), "firestore.writes": historySeries(100) },
-      rollingMetricData: {
-        "firestore.reads": rollingSeries({ "": 350 }), // warn spike
-        "firestore.writes": rollingSeries({ "": 700 }), // critical spike
-      },
-    })
-  );
+  const spec = { key: "firestore.reads", type: "x", kind: "delta" };
+  const iam = {
+    serviceAccounts: [],
+    broadBindings: [{ role: "roles/editor", email: "sa@proj.iam.gserviceaccount.com", isDefaultAgent: false }],
+  };
+  const result = analyzeProject(spikeArgs(spec, 100, 350, { iam })); // 3.5x -> warn spike, plus a critical broad-role
   assert.equal(result.status, "critical");
 });
 

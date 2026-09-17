@@ -3,18 +3,65 @@
 // about a tab or a project list — if a component needs to, it belongs in
 // projects.tsx or one of the tab files instead.
 
-import { useState } from "react"
+import { Fragment, useState } from "react"
 import type { ReactNode } from "react"
-import { ChevronDown, ChevronRight, Gauge } from "lucide-react"
+import { Check, ChevronRight, Copy, Gauge } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { CostBreakdown, Finding, Level, LifecycleFinding, ProjectResult } from "./types"
 import { LEVEL_ICON, LEVEL_LABEL, LEVEL_TEXT } from "./levels"
-import { duration, exactTime, formatMoney } from "./format"
+import { duration, exactTime, findingsToMarkdown, formatMoney } from "./format"
 
 export function StatusIcon({ level, className = "" }: { level: Level; className?: string }) {
   const Icon = LEVEL_ICON[level]
   return <Icon className={`size-4 shrink-0 ${LEVEL_TEXT[level]} ${className}`} aria-hidden="true" />
+}
+
+/** The one arrow every expandable on this page uses — a single chevron that
+ *  rotates open rather than swapping icons, so the state change reads as
+ *  motion instead of a jump cut. */
+export function ExpandArrow({ open, className = "" }: { open: boolean; className?: string }) {
+  return (
+    <ChevronRight
+      className={`shrink-0 text-muted-foreground transition-transform duration-200 ${open ? "rotate-90" : ""} ${className}`}
+      aria-hidden="true"
+    />
+  )
+}
+
+/** Dumps a findings list as Markdown to the clipboard, phrased for pasting
+ *  straight into an agent chat — the dashboard shows the estate at a glance,
+ *  but debugging an error still means handing its actual text to something
+ *  that can read code. */
+export function CopyMarkdownButton({
+  getText,
+  label = "Copy as Markdown",
+}: {
+  getText: () => string
+  label?: string
+}) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <button
+      type="button"
+      onClick={async (e) => {
+        e.stopPropagation()
+        try {
+          await navigator.clipboard.writeText(getText())
+          setCopied(true)
+          setTimeout(() => setCopied(false), 1500)
+        } catch {
+          // Clipboard access blocked (permissions, insecure context) -- the
+          // button just stays a no-op rather than throwing.
+        }
+      }}
+      className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
+    >
+      {copied ? <Check className="size-3" aria-hidden="true" /> : <Copy className="size-3" aria-hidden="true" />}
+      {copied ? "Copied" : label}
+    </button>
+  )
 }
 
 export function Tile({
@@ -66,22 +113,17 @@ export function CollapsedSection({
   const [open, setOpen] = useState(defaultOpen)
   return (
     <Card className="gap-0 px-4 py-2.5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-1.5 text-left text-sm"
-      >
-        {open ? (
-          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        ) : (
-          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        )}
-        {Icon && <Icon className={`size-3.5 shrink-0 ${tone || "text-muted-foreground"}`} aria-hidden="true" />}
-        <span className={tone || ""}>{label}</span>
-        {count !== undefined && <span className="font-mono text-xs text-muted-foreground">{count}</span>}
-      </button>
-      {open && <div className="mt-2.5">{children}</div>}
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex w-full items-center gap-1.5 text-left text-sm">
+          <ExpandArrow open={open} className="size-3.5" />
+          {Icon && <Icon className={`size-3.5 shrink-0 ${tone || "text-muted-foreground"}`} aria-hidden="true" />}
+          <span className={tone || ""}>{label}</span>
+          {count !== undefined && <span className="font-mono text-xs text-muted-foreground">{count}</span>}
+        </CollapsibleTrigger>
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down data-[state=open]:mt-2.5">
+          {children}
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   )
 }
@@ -176,6 +218,188 @@ export function FindingRow({
         </button>
       )}
     </li>
+  )
+}
+
+/** One severity, as a table: project, kind, message, and the lifecycle
+ *  details (age, new/flapping) that used to trail the row as loose spans.
+ *  Used by the severity tabs, where a flat estate-wide list of findings is
+ *  actually being scanned column by column, not read as prose. A row
+ *  expands in place (accordion-style, one at a time) to show the exact
+ *  timestamps and ack control a table cell has no room for. */
+export function FindingsTable({
+  findings,
+  lifecycle,
+  isNew,
+  onAck,
+}: {
+  findings: Finding[]
+  lifecycle?: Map<string, LifecycleFinding>
+  isNew?: (key: string) => boolean
+  onAck?: (key: string, ack: boolean) => void
+}) {
+  const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  if (findings.length === 0) return null
+  // Project, Kind, Count, Message -- Details (age/flapping) and Ack both
+  // live only in the expanded panel now, so neither takes a header column.
+  const columnCount = 4
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full table-fixed text-sm">
+        {/* Fixed layout so the columns hold a sane shape instead of
+            stretching to whatever's longest in them — Message is the only
+            one that should ever eat space, everything else is a fixed
+            width sized to its own content. */}
+        <colgroup>
+          <col className="w-24 sm:w-32" />
+          <col className="w-28 sm:w-36" />
+          <col className="w-12" />
+          <col />
+        </colgroup>
+        <thead className="text-xs text-muted-foreground">
+          <tr className="text-left">
+            <th className="py-1 pr-2 font-normal">Project</th>
+            <th className="py-1 pr-2 font-normal">Kind</th>
+            <th className="py-1 pr-2 font-normal">Count</th>
+            <th className="py-1 pr-2 font-normal">Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {findings.map((finding) => {
+            const life = lifecycle?.get(finding.key)
+            const expanded = expandedKey === finding.key
+            const new_ = isNew?.(finding.key)
+            return (
+              <Fragment key={finding.key}>
+                <tr
+                  className="cursor-pointer border-t border-border/60 align-top hover:bg-muted/40"
+                  role="button"
+                  aria-expanded={expanded}
+                  tabIndex={0}
+                  onClick={() => setExpandedKey(expanded ? null : finding.key)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      setExpandedKey(expanded ? null : finding.key)
+                    }
+                  }}
+                >
+                  <td className="py-1.5 pr-2">
+                    <span className="flex items-center gap-1">
+                      <ExpandArrow open={expanded} className="size-3" />
+                      {finding.projectName && (
+                        <Badge variant="outline" className="h-4 truncate px-1 text-[10px]">
+                          {finding.projectName}
+                        </Badge>
+                      )}
+                    </span>
+                  </td>
+                  {/* NEW rides right after the kind it's describing, not
+                      stranded in a details column a long message could push
+                      out of view. */}
+                  <td className="py-1.5 pr-2">
+                    <span className="flex min-w-0 items-center gap-1">
+                      <span className={`truncate font-mono font-medium ${LEVEL_TEXT[finding.level]}`}>
+                        {finding.kind}
+                      </span>
+                      {new_ && (
+                        <Badge variant="destructive" className="h-4 shrink-0 px-1 text-[10px]">
+                          NEW
+                        </Badge>
+                      )}
+                    </span>
+                  </td>
+                  {/* Its own column, not a suffix baked into `text` -- that
+                      used to get clipped along with the rest of a long
+                      message the moment the row truncated. */}
+                  <td className="py-1.5 pr-2">
+                    {finding.count !== undefined && finding.count > 1 && (
+                      <span
+                        className="rounded bg-muted px-1 font-mono text-[10px] text-foreground"
+                        title={`Happened ${finding.count} times`}
+                      >
+                        ×{finding.count}
+                      </span>
+                    )}
+                  </td>
+                  <td className="truncate py-1.5 pr-2 text-muted-foreground">{finding.text}</td>
+                </tr>
+                {/* Always mounted (not `expanded && <tr>`), collapsed to zero
+                    height via grid-rows -- that's what actually makes the
+                    reveal animate instead of popping in, same trick as
+                    ProjectRow's drill-down below. */}
+                <tr>
+                  <td colSpan={columnCount} className="p-0">
+                    <div
+                      className={`grid overflow-hidden transition-[grid-template-rows] duration-200 ease-out ${
+                        expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+                      }`}
+                    >
+                      <div className="min-h-0">
+                        <div className="space-y-2 border-t border-border/60 bg-muted/20 px-2 py-2">
+                          <div>
+                            <div className="text-[10px] tracking-wide text-muted-foreground uppercase">
+                              Full message
+                            </div>
+                            <p className="text-xs break-words whitespace-pre-wrap">{finding.text}</p>
+                          </div>
+                          {life ? (
+                            <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+                              <dt className="text-muted-foreground">State</dt>
+                              <dd>{life.state}</dd>
+                              <dt className="text-muted-foreground">Open</dt>
+                              <dd>{duration(life.firstSeen)}</dd>
+                              <dt className="text-muted-foreground">First seen</dt>
+                              <dd>{exactTime(life.firstSeen)}</dd>
+                              <dt className="text-muted-foreground">Last seen</dt>
+                              <dd>{exactTime(life.lastSeen)}</dd>
+                              <dt className="text-muted-foreground">Seen in</dt>
+                              <dd>{life.runsSeen} runs</dd>
+                              {life.reopenCount > 0 && (
+                                <>
+                                  <dt className={LEVEL_TEXT.warn}>Flapping</dt>
+                                  <dd className={LEVEL_TEXT.warn}>×{life.reopenCount}</dd>
+                                </>
+                              )}
+                              {life.ackedUntil && (
+                                <>
+                                  <dt className="text-muted-foreground">Acked until</dt>
+                                  <dd>{exactTime(life.ackedUntil)}</dd>
+                                </>
+                              )}
+                            </dl>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">No lifecycle history for this finding.</span>
+                          )}
+                          <div className="flex items-center gap-3">
+                            <CopyMarkdownButton
+                              label="Copy this row"
+                              getText={() => findingsToMarkdown(finding.kind, [finding], lifecycle)}
+                            />
+                            {onAck && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onAck(finding.key, life?.state !== "acked")
+                                }}
+                                className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                              >
+                                {life?.state === "acked" ? "un-ack" : "ack"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </Fragment>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
   )
 }
 

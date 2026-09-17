@@ -283,10 +283,13 @@ hard-coding a comparison).
 The kind -> level mapping lives in one place, `LEVEL_BY_KIND` in
 `functions/lib/health/config.js`, for every kind whose severity doesn't
 depend on the number behind it -- adding a new flat-severity kind is a
-one-line addition there. `spike`/`failures`/`quota`/`errors` (graduated by
-ratio/share/count) and `sa-key`/`broad-role` (graduated by key age /
+one-line addition there. `failures`/`quota`/`errors` (graduated by
+share/count, up to critical) and `sa-key`/`broad-role` (graduated by key age /
 default-agent-ness) stay computed in `analyze.js`, next to the threshold or
-flag they key off of.
+flag they key off of. `spike` is graduated too (on ratio, against
+`cfg.spikeRatio`) but only within `warn` -- usage running hot is never on its
+own evidence of a real failure, so it can't escalate to critical no matter
+the ratio.
 
 A project's `status` is the worst level among its own findings
 (`worstLevel()`) -- a project whose worst finding is `low` gets status
