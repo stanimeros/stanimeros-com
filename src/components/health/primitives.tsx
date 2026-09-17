@@ -184,12 +184,10 @@ export function ProjectValueRow({ project, right }: { project: ProjectResult; ri
 export function FindingsTable({
   findings,
   lifecycle,
-  isNew,
   onAck,
 }: {
   findings: Finding[]
   lifecycle?: Map<string, LifecycleFinding>
-  isNew?: (key: string) => boolean
   onAck?: (key: string, ack: boolean) => void
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
@@ -222,7 +220,6 @@ export function FindingsTable({
           {findings.map((finding) => {
             const life = lifecycle?.get(finding.key)
             const expanded = expandedKey === finding.key
-            const new_ = isNew?.(finding.key)
             return (
               <Fragment key={finding.key}>
                 <tr
@@ -248,19 +245,9 @@ export function FindingsTable({
                       )}
                     </span>
                   </td>
-                  {/* NEW rides right after the kind it's describing, not
-                      stranded in a details column a long message could push
-                      out of view. */}
                   <td className="py-1.5 pr-2">
-                    <span className="flex min-w-0 items-center gap-1">
-                      <span className={`truncate font-mono font-medium ${LEVEL_TEXT[finding.level]}`}>
-                        {finding.kind}
-                      </span>
-                      {new_ && (
-                        <Badge variant="destructive" className="h-4 shrink-0 px-1 text-[10px]">
-                          NEW
-                        </Badge>
-                      )}
+                    <span className={`truncate font-mono font-medium ${LEVEL_TEXT[finding.level]}`}>
+                      {finding.kind}
                     </span>
                   </td>
                   <td className="truncate py-1.5 pr-2 text-muted-foreground">{finding.text}</td>

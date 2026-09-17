@@ -110,7 +110,6 @@ export interface Report {
   costDataThrough?: string | null
   /** True when the export is behind — see the staleness banner in CostTab. */
   costStale?: boolean
-  newFindingKeys?: string[]
   projects: ProjectResult[]
   projectErrors: { project: string; stage: string; error: string }[]
 }

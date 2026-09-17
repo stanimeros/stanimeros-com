@@ -234,6 +234,12 @@ function planLifecycleUpdate(report, existingByKey, now) {
  * Reads the whole `health_findings` collection, runs the state machine, and
  * writes back only the documents that changed. A few hundred keys total, so
  * a full-collection read is cheap.
+ *
+ * Also returns `ackedKeys` -- every key resolved as of this run -- so the
+ * caller can keep an alert email's context section from repeating findings
+ * someone already marked resolved (see notify.js's renderEmail). Computed
+ * here rather than re-derived from a second read, since planLifecycleUpdate
+ * already decided each present key's final state this run.
  */
 async function updateLifecycle(db, report, now = new Date()) {
   const snap = await db.collection(FINDINGS).get();
@@ -247,7 +253,8 @@ async function updateLifecycle(db, report, now = new Date()) {
   });
 
   const writes = planLifecycleUpdate(report, existingByKey, now);
-  if (!writes.length) return { updated: 0 };
+  const ackedKeys = writes.filter((w) => w.op === "set" && w.data.state === "acked").map((w) => w.key);
+  if (!writes.length) return { updated: 0, ackedKeys };
 
   // Firestore batches cap at 500 writes; a few hundred keys stays under that
   // today, but chunk defensively so growth in the estate doesn't silently
@@ -261,7 +268,7 @@ async function updateLifecycle(db, report, now = new Date()) {
     }
     await batch.commit();
   }
-  return { updated: writes.length };
+  return { updated: writes.length, ackedKeys };
 }
 
 module.exports = {

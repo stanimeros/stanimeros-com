@@ -15,7 +15,7 @@ const { fetchCosts, fetchOtherCost, fetchBillingTotal, fetchCostDataThrough } = 
 const { collectIam } = require("./iam");
 const { collectDeploys } = require("./deploys");
 const { analyzeProject, worstLevel } = require("./analyze");
-const { notifyIfNew, newKeys } = require("./notify");
+const { notifyIfNew } = require("./notify");
 const { updateLifecycle } = require("./lifecycle");
 
 if (!admin.apps.length) admin.initializeApp();
@@ -196,7 +196,6 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
     otherCost,
     costDataThrough,
     costStale,
-    newFindingKeys: [],
     projects: checked,
     projectErrors,
   };
@@ -242,16 +241,20 @@ async function runHealthCheck({ mode = "scheduled" } = {}) {
   // "Run now" would silently disarm the thing the tool exists to do.
   const alerting = mode !== "manual";
 
-  const { sent, keys } = alerting
-    ? await notifyIfNew(report, previous.findingKeys, {
-        to: process.env.HEALTH_EMAIL_TO,
-        dashboardUrl: "https://stanimeros.com/health",
-      })
-    : { sent: false, keys: [] };
+  // Ahead of notifyIfNew, not after: this run's ack state (what got marked
+  // resolved as of right now) is what keeps a resolved finding out of an
+  // alert email's context section — see notify.js's renderEmail. Unlike
+  // health_state/latest below, this write always happens, manual runs
+  // included — health_findings is just bookkeeping over what happened, not
+  // part of the alert-arming state that "Run now" must leave alone.
+  const { ackedKeys } = await updateLifecycle(db, report, new Date(report.generated));
 
-  // Still worth showing on the page which findings are new relative to the last
-  // run — the diff is useful information even when it isn't mailed.
-  report.newFindingKeys = alerting ? keys : newKeys(report, previous.findingKeys);
+  const { sent, keys } = await notifyIfNew(report, previous.findingKeys, {
+    to: process.env.HEALTH_EMAIL_TO,
+    dashboardUrl: "https://stanimeros.com/health",
+    ackedKeys,
+    alerting,
+  });
 
   const allKeys = report.projects.flatMap((p) => p.findings.map((f) => f.key));
   await db.collection(REPORTS).doc(report.runId).set(report);
@@ -267,22 +270,13 @@ async function runHealthCheck({ mode = "scheduled" } = {}) {
     }, { merge: true });
   }
 
-  // Unlike health_state/latest above, health_findings is updated on every
-  // run, manual included. The two stores exist for different reasons:
-  // health_state/latest arms the next scheduled email, and a manual run must
-  // leave it alone or "Run now" would silently disarm that email.
-  // health_findings is just bookkeeping over what actually happened -- ack
-  // state, first/last seen, runs seen. Do not couple these two stores to
-  // "fix" that asymmetry; it's deliberate.
-  await updateLifecycle(db, report, new Date(report.generated));
-
   const pruned = await pruneOldReports(db);
 
   return {
     runId: report.runId,
     status: report.status,
     counts: report.counts,
-    newFindings: report.newFindingKeys.length,
+    newFindings: keys.length,
     emailed: sent,
     alerting,
     notChecked: report.projectErrors.length,

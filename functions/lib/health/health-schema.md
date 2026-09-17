@@ -26,7 +26,6 @@ chronologically and is unique per run.
   "costWindowDays": 30,
   "costDataThrough": "2026-08-04",           // newest day present in the billing export; null if unreadable
   "costStale":     true,                     // true when costDataThrough is null or >3 days behind now -- see A1 below
-  "newFindingKeys": ["nourea:spike:firestore.reads"],  // drove the email; [] = silent run
   "projects": [ ProjectResult, ... ],
 
   // Projects the sweep could not read. A project in here is rendered as
@@ -173,24 +172,30 @@ manual runs update this store but deliberately don't touch `health_state/latest`
 }
 ```
 
-State transitions -- ack is the only lifecycle control point, there is no
-"resolved":
+State transitions:
 
 - Present in this run -> `open` (or stays `acked` if the ack hasn't expired
   and the finding hasn't escalated warn -> critical, which un-acks it).
-- Absent this run -> the document, if any, is left completely untouched.
-  There used to be a resolved/unknown state machine here (present -> absent
-  meant "resolved", guarded by whether the project was actually read this
-  run so a 403'd project didn't read as a wave of false resolutions) --
-  removed because a partial collector failure could still slip through that
-  guard and mask itself as a real fix (see auth.js's SCOPES history). What
-  the dashboard shows for "is this still a problem" is simply whatever's in
-  the *current* report's `findings`; this collection only ever tracks ack
-  state and first/last-seen for keys that are currently present.
+- Absent this run, on a project this run actually checked (present in the
+  report's `projects`, not one of its `projectErrors`) -> a confirmed clear.
+  The document is **deleted**, open or acked, it makes no difference. If the
+  same key ever fires again later, it starts a brand-new document (fresh
+  `firstSeen`, `state: "open"`) -- the whole mechanism behind "ack it, and if
+  it comes back later, treat it as new again": acking only suppresses the
+  current occurrence, and once that's confirmed gone there's nothing left to
+  remember was acked.
+- Absent this run, on a project that errored this run -> the document is
+  left completely untouched. Unknown is not the same as gone. (This is
+  exactly the guard an earlier version of this mechanism lacked -- a 403'd
+  project used to make every one of its findings look resolved, which the
+  next successful read then made look reopened. `updateLifecycle` computes
+  "checked" from the report's own `projects` list, so a collector failure
+  can never manufacture a false clear.)
 
-No retention pass: nothing here is ever deleted automatically. A stale doc
-for a key that stopped appearing just sits inert until the key reappears (in
-which case it picks the doc back up as a continuation) or someone acks it.
+`updateLifecycle` also returns `ackedKeys` -- every key resolved as of this
+run -- purely so `notify.js`'s `renderEmail` can leave already-resolved
+findings out of an alert email's context section (see the Email amendment
+below).
 
 ## `health_seen/{uid}`
 
@@ -321,9 +326,13 @@ only new findings are `low` is a silent run -- `notify.js`'s
 `hasAlertableFinding()` gates sending on at least one new finding above
 `low`. A `low` finding can still ride along as context inside an email
 triggered by something else in the same run: `renderEmail` lists every
-finding of an affected project, tagged NEW or ongoing, not just the ones that
-qualified the project for inclusion. `LEVEL_COLOR` in `notify.js` has a `low`
-entry (muted, not amber) so it reads distinctly from `warn` in the mail body.
+*pending* finding of an affected project (tagged NEW or ongoing), not just
+the ones that qualified the project for inclusion -- but never one already
+marked resolved. That's `ackedKeys`, which `updateLifecycle` (lifecycle.js)
+computes as of this run and `runHealthCheck` passes straight through, so a
+finding someone resolved doesn't keep showing up as context in every alert
+afterward. `LEVEL_COLOR` in `notify.js` has a `low` entry (muted, not amber)
+so it reads distinctly from `warn` in the mail body.
 
 ## Amendment: deploy correlation
 

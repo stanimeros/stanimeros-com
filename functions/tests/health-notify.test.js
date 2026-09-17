@@ -137,6 +137,23 @@ test("notifyIfNew is a no-op (sent: false, keys: []) when nothing is new at all"
   assert.deepEqual(result.keys, []);
 });
 
+test("renderEmail leaves an already-resolved finding out of a project's context list entirely", () => {
+  const newFinding = finding("proj:spike:firestore.reads", { text: "reads spiked" });
+  const resolvedFinding = finding("proj:api_key_warning:x", { text: "unrestricted key", level: "low" });
+  const projects = [{ project: "proj", name: "Proj", findings: [newFinding, resolvedFinding], errorTruncated: false }];
+  const html = renderEmail(report(projects), ["proj:spike:firestore.reads"], null, ["proj:api_key_warning:x"]);
+
+  assert.match(html, /reads spiked/);
+  assert.ok(!html.includes("unrestricted key"), "a finding already marked resolved must not appear as context");
+});
+
+test("notifyIfNew with alerting: false never sends, but still returns the new keys", async () => {
+  const projects = [{ project: "proj", name: "Proj", findings: [finding("proj:spike:firestore.reads")] }];
+  const result = await notifyIfNew(report(projects), [], { to: "owner@example.com", alerting: false });
+  assert.equal(result.sent, false);
+  assert.deepEqual(result.keys, ["proj:spike:firestore.reads"]);
+});
+
 test("renderEmail gives a low finding its own muted color, distinct from warn's amber", () => {
   const lowFinding = finding("proj:api-key:abc", { level: "low", kind: "api-key", text: "unrestricted key" });
   const projects = [{ project: "proj", name: "Proj", findings: [lowFinding], errorTruncated: false }];

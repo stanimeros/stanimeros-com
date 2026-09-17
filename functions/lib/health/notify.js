@@ -59,9 +59,14 @@ function subjectFor(report, keys) {
 
 // Only the new findings lead. The rest of each affected project's findings
 // follow as context, so the mail explains the situation without becoming a
-// full report — that's what the dashboard is for.
-function renderEmail(report, keys, dashboardUrl) {
+// full report — that's what the dashboard is for. `ackedKeys` (this run's
+// already-resolved findings, from updateLifecycle) are left out of that
+// context entirely: a finding someone already marked resolved isn't context
+// for a new one, it's noise repeated in every email until it eventually
+// clears on its own.
+function renderEmail(report, keys, dashboardUrl, ackedKeys = []) {
   const isNew = (finding) => keys.includes(finding.key);
+  const acked = new Set(ackedKeys);
   const affected = report.projects.filter((p) => p.findings.some(isNew));
 
   const parts = [
@@ -79,7 +84,7 @@ function renderEmail(report, keys, dashboardUrl) {
       `<span style="font-weight:400;color:#888">${escapeHtml(project.project)}</span></h3>`,
       `<ul style="margin:0;padding-left:18px">`
     );
-    for (const finding of project.findings) {
+    for (const finding of project.findings.filter((f) => !acked.has(f.key))) {
       const color = LEVEL_COLOR[finding.level] || "#333";
       const tag = isNew(finding)
         ? `<strong style="color:${color}">NEW</strong> `
@@ -119,18 +124,19 @@ function renderEmail(report, keys, dashboardUrl) {
 }
 
 /**
- * Sends only when there is something new *and* alertable. Returns the keys
- * that are new in this run either way (even when nothing was mailed) --
- * runHealthCheck still wants that list for the dashboard's "new" indicator
- * and to arm the next run's diff, per the header comment on `low`.
+ * Sends only when this is an alerting run (not a manual "Run now" -- see
+ * runHealthCheck) and there's something new *and* alertable in it. Returns
+ * the keys that are new in this run either way (even when nothing was
+ * mailed, or `alerting` is false) -- runHealthCheck arms the next run's diff
+ * off this regardless of mode, per the header comment on `low`.
  */
-async function notifyIfNew(report, previousKeys, { to = null, dashboardUrl = null } = {}) {
+async function notifyIfNew(report, previousKeys, { to = null, dashboardUrl = null, ackedKeys = [], alerting = true } = {}) {
   const keys = newKeys(report, previousKeys);
-  if (!keys.length || !hasAlertableFinding(report, keys)) return { sent: false, keys };
+  if (!alerting || !keys.length || !hasAlertableFinding(report, keys)) return { sent: false, keys };
 
   await sendOwnerEmail({
     subject: subjectFor(report, keys),
-    html: renderEmail(report, keys, dashboardUrl),
+    html: renderEmail(report, keys, dashboardUrl, ackedKeys),
     to,
   });
   return { sent: true, keys };

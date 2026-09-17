@@ -17,7 +17,6 @@ export function SeverityTab({
   level,
   projects,
   lifecycle,
-  isNew,
   onAck,
   emptyText,
   children,
@@ -25,7 +24,6 @@ export function SeverityTab({
   level: Exclude<Level, "ok">
   projects: ProjectResult[]
   lifecycle: Map<string, LifecycleFinding>
-  isNew: (key: string) => boolean
   onAck: (key: string, ack: boolean) => void
   emptyText: string
   children?: ReactNode
@@ -93,7 +91,7 @@ export function SeverityTab({
               getText={() => findingsToMarkdown(`${LEVEL_LABEL[level]} (${headerCount})`, active, lifecycle)}
             />
           </div>
-          <FindingsTable findings={active} lifecycle={lifecycle} isNew={isNew} onAck={onAck} />
+          <FindingsTable findings={active} lifecycle={lifecycle} onAck={onAck} />
         </Card>
       )}
 

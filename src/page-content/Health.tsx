@@ -260,18 +260,6 @@ export default function Health() {
   // Reverse once, here, rather than in each chart.
   const chronological = useMemo(() => [...history].reverse(), [history])
 
-  /** New *since you last looked*, not since the previous run — being away for
-   *  a day must not roll the window past. Falls back to the run's own diff
-   *  when there is no marker yet. */
-  const isNew = useCallback(
-    (key: string) => {
-      const life = lifecycle.get(key)
-      if (seen?.lastViewedAt && life) return life.firstSeen > seen.lastViewedAt
-      return (report?.newFindingKeys || []).includes(key)
-    },
-    [lifecycle, seen, report]
-  )
-
   const sinceLast = useMemo(() => {
     if (!seen?.lastViewedAt) return null
     const newCount = findings.filter((f) => f.firstSeen > seen.lastViewedAt!).length
@@ -517,7 +505,6 @@ export default function Health() {
                   level={level}
                   projects={filteredProjects}
                   lifecycle={lifecycle}
-                  isNew={isNew}
                   onAck={onAck}
                   emptyText={emptyText}
                 >
