@@ -13,6 +13,10 @@
 const UNIONE_BASE = "https://api.unione.io/en/transactional/api/v1";
 const FROM_EMAIL = "hello@stanimeros.com";
 const FROM_NAME = "stanimeros.com";
+// Where mail actually lands when a caller doesn't pass its own `to` --
+// separate from FROM_EMAIL on purpose: that one has to be the verified
+// sending domain, this one is just wherever the owner actually reads mail.
+const OWNER_EMAIL = "pantelisstanimeros@gmail.com";
 
 // Escapes visitor-supplied text before it's interpolated into an email's HTML —
 // without this, a visitor could submit a contact form or chat message containing
@@ -28,8 +32,7 @@ function escapeHtml(value) {
 
 // Single place that actually sends mail to the site owner — used by both the
 // contact form and the chat summary emails so there's one delivery path to reason about.
-// `to` defaults to the FROM address. The health checker overrides it to
-// reach the iCloud-hosted @stanimeros.com address.
+// `to` defaults to OWNER_EMAIL.
 //
 // Throws on failure rather than swallowing -- same contract the Gmail
 // version had (an unawaited transporter.sendMail rejection propagated to
@@ -50,7 +53,7 @@ async function sendOwnerEmail({ subject, html, to = null }) {
     },
     body: JSON.stringify({
       message: {
-        recipients: [{ email: to || FROM_EMAIL }],
+        recipients: [{ email: to || OWNER_EMAIL }],
         subject,
         from_email: FROM_EMAIL,
         from_name: FROM_NAME,
