@@ -9,6 +9,18 @@ import { LEVEL_STYLE, LEVEL_TEXT } from "./levels"
 import { formatValue } from "./format"
 import { CollapsedSection, StatusIcon } from "./primitives"
 
+/** A severity count plus, when any are acked, a muted "(N)" alongside it --
+ *  the one convention every count on this page uses now, so "0" never reads
+ *  as "nothing happened here" when four things happened and got resolved. */
+function CountWithResolved({ value, resolved, tone }: { value: number; resolved: number; tone: string }) {
+  return (
+    <span className={`text-lg font-semibold tabular-nums ${value ? tone : "text-muted-foreground"}`}>
+      {value}
+      {resolved > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">({resolved})</span>}
+    </span>
+  )
+}
+
 /** One project, reduced to its severity counts — the grid Overview is built
  *  from. The name opens the Projects drill-down for this project; each
  *  non-zero count opens the matching severity tab, filtered to it. */
@@ -22,18 +34,19 @@ function ProjectOverviewCard({
   onSelect: (project: ProjectResult, tab: string) => void
 }) {
   const counts: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
+  const resolved: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
   for (const finding of project.findings) {
-    if (lifecycle.get(finding.key)?.state === "acked") continue
-    counts[finding.level] += 1
+    if (lifecycle.get(finding.key)?.state === "acked") resolved[finding.level] += 1
+    else counts[finding.level] += 1
   }
   // All three are finding counts, so the row reads as one series. The raw
   // Cloud Logging line count used to sit in the first cell — a different
   // measure over a different window, which made the three numbers look
   // comparable when they weren't. It lives on the Critical tab now.
-  const cells: { label: string; value: number; tone: string; tab: string }[] = [
-    { label: "critical", value: counts.critical, tone: LEVEL_TEXT.critical, tab: "errors" },
-    { label: "warnings", value: counts.warn, tone: LEVEL_TEXT.warn, tab: "warnings" },
-    { label: "low", value: counts.low, tone: LEVEL_TEXT.low, tab: "low" },
+  const cells: { label: string; value: number; resolved: number; tone: string; tab: string }[] = [
+    { label: "critical", value: counts.critical, resolved: resolved.critical, tone: LEVEL_TEXT.critical, tab: "errors" },
+    { label: "warnings", value: counts.warn, resolved: resolved.warn, tone: LEVEL_TEXT.warn, tab: "warnings" },
+    { label: "low", value: counts.low, resolved: resolved.low, tone: LEVEL_TEXT.low, tab: "low" },
   ]
   return (
     <div
@@ -58,9 +71,7 @@ function ProjectOverviewCard({
               cell.value ? "cursor-pointer hover:bg-muted/50" : "cursor-default"
             }`}
           >
-            <span className={`text-lg font-semibold tabular-nums ${cell.value ? cell.tone : "text-muted-foreground"}`}>
-              {cell.value}
-            </span>
+            <CountWithResolved value={cell.value} resolved={cell.resolved} tone={cell.tone} />
             <span className="text-[10px] text-muted-foreground">{cell.label}</span>
           </button>
         ))}
@@ -75,11 +86,16 @@ function ProjectOverviewCard({
 export function StatStrip({
   report,
   findingCounts,
+  ackedCounts,
   errorTotal,
   healthyCount,
 }: {
   report: Report
   findingCounts: Record<Exclude<Level, "ok">, number>
+  /** Same split as `findingCounts`, inverted — acked findings per level, so
+   *  the strip can say "0 (4)" instead of a bare "0" that looks identical to
+   *  a project with nothing to resolve. */
+  ackedCounts: Record<Exclude<Level, "ok">, number>
   errorTotal: number
   /** Projects with no un-acked findings — not `report.counts.ok`, which is
    *  computed by the sweep with no awareness of acks and so never rises
@@ -90,21 +106,27 @@ export function StatStrip({
   // trailing "of N projects" is what says the last number counts something
   // else. The raw log-line total is named separately ("log lines"), never
   // mixed in as if it were a finding count.
-  const cells: { label: string; value: string; tone?: string }[] = [
-    { label: "critical", value: String(findingCounts.critical), tone: findingCounts.critical ? LEVEL_TEXT.critical : "" },
-    { label: "warnings", value: String(findingCounts.warn), tone: findingCounts.warn ? LEVEL_TEXT.warn : "" },
-    { label: "low", value: String(findingCounts.low), tone: findingCounts.low ? LEVEL_TEXT.low : "" },
-    { label: "log lines", value: formatValue(errorTotal, null), tone: "" },
-    { label: "healthy", value: String(healthyCount), tone: healthyCount ? LEVEL_TEXT.ok : "" },
+  const cells: { label: string; value: number; resolved: number; tone: string }[] = [
+    { label: "critical", value: findingCounts.critical, resolved: ackedCounts.critical, tone: LEVEL_TEXT.critical },
+    { label: "warnings", value: findingCounts.warn, resolved: ackedCounts.warn, tone: LEVEL_TEXT.warn },
+    { label: "low", value: findingCounts.low, resolved: ackedCounts.low, tone: LEVEL_TEXT.low },
   ]
   return (
     <Card className="flex-row flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5">
       {cells.map((cell) => (
         <span key={cell.label} className="flex items-baseline gap-1.5">
-          <span className={`text-lg font-semibold tabular-nums ${cell.tone || ""}`}>{cell.value}</span>
+          <CountWithResolved value={cell.value} resolved={cell.resolved} tone={cell.tone} />
           <span className="text-xs text-muted-foreground">{cell.label}</span>
         </span>
       ))}
+      <span className="flex items-baseline gap-1.5">
+        <span className="text-lg font-semibold tabular-nums">{formatValue(errorTotal, null)}</span>
+        <span className="text-xs text-muted-foreground">log lines</span>
+      </span>
+      <span className="flex items-baseline gap-1.5">
+        <span className={`text-lg font-semibold tabular-nums ${healthyCount ? LEVEL_TEXT.ok : ""}`}>{healthyCount}</span>
+        <span className="text-xs text-muted-foreground">healthy</span>
+      </span>
       <span className="ml-auto text-xs text-muted-foreground">of {report.counts.total} projects</span>
     </Card>
   )
@@ -118,6 +140,7 @@ export function OverviewTab({
   projects,
   lifecycle,
   findingCounts,
+  ackedCounts,
   errorTotal,
   onSelectProject,
 }: {
@@ -125,13 +148,20 @@ export function OverviewTab({
   projects: ProjectResult[]
   lifecycle: Map<string, LifecycleFinding>
   findingCounts: Record<Exclude<Level, "ok">, number>
+  ackedCounts: Record<Exclude<Level, "ok">, number>
   errorTotal: number
   onSelectProject: (project: ProjectResult, tab: string) => void
 }) {
   const healthyCount = projects.filter((p) => p.status === "ok").length
   return (
     <div className="space-y-3">
-      <StatStrip report={report} findingCounts={findingCounts} errorTotal={errorTotal} healthyCount={healthyCount} />
+      <StatStrip
+        report={report}
+        findingCounts={findingCounts}
+        ackedCounts={ackedCounts}
+        errorTotal={errorTotal}
+        healthyCount={healthyCount}
+      />
 
       {projects.length === 0 ? (
         <Card className="gap-1 px-4 py-3 text-sm">

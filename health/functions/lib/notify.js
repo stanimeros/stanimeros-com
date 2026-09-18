@@ -32,30 +32,43 @@ function levelOf(report, key) {
   return null;
 }
 
-// True when at least one of the new keys is worth waking someone up over.
-// `low` findings are estate hygiene (an unrestricted API key, GCP's default
-// agent still holding roles/editor, ...) -- true, but not an incident, and
-// often not fixable today. A run whose *only* new findings are `low` must
-// stay silent: three runs a day would otherwise mail the same "unrestricted
-// key" notice on the same cadence as a real outage, and the alert would stop
-// being read. They still ride along as context inside an email triggered by
-// something else -- renderEmail lists every finding of an affected project,
-// not just the ones that qualified it -- so nothing about them is hidden,
-// only the trigger is gated.
-function hasAlertableFinding(report, keys) {
-  return keys.some((key) => levelOf(report, key) !== "low");
+// The subset of `keys` actually worth waking someone up over: not `low`
+// (estate hygiene -- an unrestricted API key, GCP's default agent still
+// holding roles/editor, ... -- true, but not an incident) and not already
+// `ackedKeys` (resolved as of this very run -- see updateLifecycle; in
+// practice a brand-new key can't be acked yet, but a key that both appears
+// here and in ackedKeys is, by definition, not something to alert on).
+// subjectFor, renderEmail's header count, and the send gate below all read
+// off this same list, so "N new findings" in the subject is never a bigger
+// number than what the body actually lists -- that mismatch (mailing "11
+// new findings" while showing 2) was the whole complaint that led here.
+function alertableKeys(report, keys, ackedKeys = []) {
+  const acked = new Set(ackedKeys);
+  return keys.filter((key) => levelOf(report, key) !== "low" && !acked.has(key));
 }
 
-function subjectFor(report, keys) {
+// A run whose *only* new findings are `low` (or already resolved) must stay
+// silent: three runs a day would otherwise mail the same "unrestricted key"
+// notice on the same cadence as a real outage, and the alert would stop
+// being read. Low findings still ride along as context inside an email
+// triggered by something else -- renderEmail lists every finding of an
+// affected project, not just the ones that qualified it -- so nothing about
+// them is hidden, only the trigger (and the headline count) is gated.
+function hasAlertableFinding(report, keys, ackedKeys = []) {
+  return alertableKeys(report, keys, ackedKeys).length > 0;
+}
+
+function subjectFor(report, keys, ackedKeys = []) {
+  const alertable = alertableKeys(report, keys, ackedKeys);
   const worst = report.projects
-    .filter((p) => p.findings.some((f) => keys.includes(f.key)))
+    .filter((p) => p.findings.some((f) => alertable.includes(f.key)))
     .map((p) => p.name);
   const scope = worst.length === 1 ? worst[0] : `${worst.length} projects`;
   // The worst of the NEW findings, not of the whole estate. Keying off
   // report.status mailed "[CRITICAL]" for a single new warn whenever some
   // unrelated project happened to already be critical.
-  const level = keys.some((key) => levelOf(report, key) === "critical") ? "CRITICAL" : "Warning";
-  return `[${level}] ${scope} — ${keys.length} new finding${keys.length === 1 ? "" : "s"}`;
+  const level = alertable.some((key) => levelOf(report, key) === "critical") ? "CRITICAL" : "Warning";
+  return `[${level}] ${scope} — ${alertable.length} new finding${alertable.length === 1 ? "" : "s"}`;
 }
 
 // Only the new findings lead. The rest of each affected project's findings
@@ -66,12 +79,21 @@ function subjectFor(report, keys) {
 // for a new one, it's noise repeated in every email until it eventually
 // clears on its own.
 function renderEmail(report, keys, dashboardUrl, ackedKeys = []) {
+  const alertable = alertableKeys(report, keys, ackedKeys);
+  const lowOrResolvedCount = keys.length - alertable.length;
   const isNew = (finding) => keys.includes(finding.key);
   const acked = new Set(ackedKeys);
-  const affected = report.projects.filter((p) => p.findings.some(isNew));
+  // Affected = projects with an alertable new finding, not just any new one
+  // -- a project whose only new key is `low` never gets a heading (and an
+  // empty <ul>) of its own, matching the subject line's count.
+  const affected = report.projects.filter((p) => p.findings.some((f) => alertable.includes(f.key)));
 
   const parts = [
-    `<h2 style="margin:0 0 4px">System health — ${keys.length} new finding${keys.length === 1 ? "" : "s"}</h2>`,
+    `<h2 style="margin:0 0 4px">System health — ${alertable.length} new finding${alertable.length === 1 ? "" : "s"}`,
+    lowOrResolvedCount > 0
+      ? ` <span style="font-weight:400;color:#999;font-size:14px">(+${lowOrResolvedCount} low/resolved, see dashboard)</span>`
+      : "",
+    `</h2>`,
     `<p style="margin:0 0 16px;color:#666;font-size:13px">`,
     // Explicitly "projects": these are project counts sitting directly under
     // a finding count, which read as more findings.
@@ -131,14 +153,14 @@ function renderEmail(report, keys, dashboardUrl, ackedKeys = []) {
  */
 async function notifyIfNew(report, previousKeys, { to = null, dashboardUrl = null, ackedKeys = [], alerting = true } = {}) {
   const keys = newKeys(report, previousKeys);
-  if (!alerting || !keys.length || !hasAlertableFinding(report, keys)) return { sent: false, keys };
+  if (!alerting || !keys.length || !hasAlertableFinding(report, keys, ackedKeys)) return { sent: false, keys };
 
   await sendOwnerEmail({
-    subject: subjectFor(report, keys),
+    subject: subjectFor(report, keys, ackedKeys),
     html: renderEmail(report, keys, dashboardUrl, ackedKeys),
     to,
   });
   return { sent: true, keys };
 }
 
-module.exports = { notifyIfNew, newKeys, hasAlertableFinding, renderEmail, subjectFor };
+module.exports = { notifyIfNew, newKeys, hasAlertableFinding, alertableKeys, renderEmail, subjectFor };

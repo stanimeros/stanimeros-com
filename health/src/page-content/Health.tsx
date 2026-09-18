@@ -267,13 +267,25 @@ export default function Health() {
 
   /** Findings per level across the estate — the tab badges. Counts findings,
    *  not projects, and skips acked ones so a badge never contradicts the
-   *  list it labels. */
+   *  list it labels. `ackedCounts` is the companion tally (same split,
+   *  inverted) so every place that shows a severity count can add "(N
+   *  resolved)" next to it without re-deriving the acked half itself. */
   const findingCounts = useMemo(() => {
     const counts: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
     for (const project of projects) {
       for (const finding of project.findings) {
         if (lifecycle.get(finding.key)?.state === "acked") continue
         counts[finding.level] += 1
+      }
+    }
+    return counts
+  }, [projects, lifecycle])
+
+  const ackedCounts = useMemo(() => {
+    const counts: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
+    for (const project of projects) {
+      for (const finding of project.findings) {
+        if (lifecycle.get(finding.key)?.state === "acked") counts[finding.level] += 1
       }
     }
     return counts
@@ -289,8 +301,23 @@ export default function Health() {
 
   // The callable returns runs newest-first (orderBy runId desc), but every
   // time-series mark on this page reads left-to-right as oldest-to-newest.
-  // Reverse once, here, rather than in each chart.
-  const chronological = useMemo(() => [...history].reverse(), [history])
+  // Reverse once, here, rather than in each chart. The one entry whose runId
+  // matches the currently loaded report is swapped for the acked-aware
+  // status/counts computed above -- `history`'s own row came straight off
+  // the sweep and knows nothing about acks, same blind spot as
+  // `report.status`/`project.status` (see `effectiveReportStatus`/
+  // `projects` above). Older bars stay exactly as the sweep wrote them: a
+  // permanent record of what that run actually found, acking something
+  // today shouldn't repaint the past. Only "now" should track live acks.
+  const chronological = useMemo(() => {
+    const runs = [...history].reverse()
+    if (!report) return runs
+    const liveCounts: Record<Level | "total", number> = { critical: 0, warn: 0, low: 0, ok: 0, total: projects.length }
+    for (const project of projects) liveCounts[project.status] += 1
+    return runs.map((run) =>
+      run.runId === report.runId ? { ...run, status: effectiveReportStatus, counts: liveCounts } : run
+    )
+  }, [history, report, effectiveReportStatus, projects])
 
   const sinceLast = useMemo(() => {
     if (!seen?.lastViewedAt) return null
@@ -548,6 +575,7 @@ export default function Health() {
                 projects={projects}
                 lifecycle={lifecycle}
                 findingCounts={findingCounts}
+                ackedCounts={ackedCounts}
                 errorTotal={errorTotal}
                 onSelectProject={(project, tab) => {
                   setProjectFilter(project.project)
