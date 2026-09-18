@@ -152,12 +152,17 @@ exports.reportClientError = onRequest(
     }
 
     // jsonPayload.kind is the one field clientErrors.js's log filter keys
-    // on -- every other field is free-form and optional.
+    // on -- every other field is free-form and optional. Deliberately NOT
+    // called `message`: firebase-functions' logger.error builds its own
+    // `out.message` (a formatted/stack-wrapped string) from the log call's
+    // string args and writes it *after* spreading this data object in, so a
+    // field literally named `message` here is silently overwritten by that
+    // -- see entryFromArgs in firebase-functions/lib/logger/index.js.
     logger.error("client error", {
       kind: "client-error",
       project,
-      message,
-      stack: truncated(body.stack, MAX_FIELD_LENGTHS.stack),
+      errorMessage: message,
+      errorStack: truncated(body.stack, MAX_FIELD_LENGTHS.stack),
       url: truncated(body.url, MAX_FIELD_LENGTHS.url),
       userAgent: truncated(body.userAgent, MAX_FIELD_LENGTHS.userAgent),
       level: body.level === "warning" ? "warning" : "error",
