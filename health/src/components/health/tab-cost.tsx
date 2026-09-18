@@ -2,12 +2,52 @@
 // billing export backfills forward, and blanking the tab until it catches up
 // is what left this empty with data already sitting in BigQuery.
 
+import { useState } from "react"
 import { AlertTriangle, CircleDollarSign } from "lucide-react"
 import { Card } from "@/components/ui/card"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { CostBreakdown, ProjectResult, Report } from "./types"
 import { LEVEL_TEXT } from "./levels"
 import { formatMoney } from "./format"
-import { CollapsedSection, CostSummary, ProjectValueRow, Tile } from "./primitives"
+import { CostSummary, ExpandArrow, StatusIcon, Tile } from "./primitives"
+
+/** One project's 30d total (and trend), tap to expand into its own
+ *  CostSummary breakdown -- the row and the breakdown used to be two
+ *  separate lists (this one, plus a "Per-project breakdown" section below
+ *  repeating every project a second time). Same collapse-in-place pattern
+ *  as ProjectCard in projects.tsx. */
+function CostProjectRow({ project }: { project: ProjectResult & { cost: CostBreakdown } }) {
+  const [open, setOpen] = useState(false)
+  const delta = project.cost.prev30d ? ((project.cost.last30d - project.cost.prev30d) / project.cost.prev30d) * 100 : null
+
+  return (
+    <li className="py-1.5">
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 text-left text-sm">
+          <span className="flex min-w-0 items-center gap-2">
+            <ExpandArrow open={open} className="size-3.5" />
+            <StatusIcon level={project.status} />
+            <span className="truncate">{project.name}</span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            {delta !== null && (
+              <span className={`text-xs ${delta > 5 ? LEVEL_TEXT.warn : "text-muted-foreground"}`}>
+                {delta > 0 ? "+" : ""}
+                {Math.round(delta)}%
+              </span>
+            )}
+            <span>{formatMoney(project.cost.last30d, project.cost.currency)}</span>
+          </span>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down data-[state=open]:mt-2">
+          <div className="pl-5.5">
+            <CostSummary cost={project.cost} />
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
+  )
+}
 
 export function CostTab({ report, projects }: { report: Report; projects: ProjectResult[] }) {
   const withCost = projects.filter((p): p is ProjectResult & { cost: CostBreakdown } => p.cost !== null)
@@ -65,34 +105,15 @@ export function CostTab({ report, projects }: { report: Report; projects: Projec
         />
       </div>
 
-      <Card className="px-4 py-3">
-        <div className="mb-2 text-sm font-medium">Cost by project · {report.costWindowDays}d</div>
+      <Card className="px-4 py-2.5">
+        <div className="mb-1 text-sm font-medium">Cost by project · {report.costWindowDays}d</div>
         {sorted.length === 0 ? (
           <p className="text-sm text-muted-foreground">No cost data available.</p>
         ) : (
           <ul className="divide-y divide-border/60">
-            {sorted.map((project) => {
-              const delta = project.cost.prev30d
-                ? ((project.cost.last30d - project.cost.prev30d) / project.cost.prev30d) * 100
-                : null
-              return (
-                <ProjectValueRow
-                  key={project.project}
-                  project={project}
-                  right={
-                    <>
-                      {delta !== null && (
-                        <span className={`text-xs ${delta > 5 ? LEVEL_TEXT.warn : "text-muted-foreground"}`}>
-                          {delta > 0 ? "+" : ""}
-                          {Math.round(delta)}%
-                        </span>
-                      )}
-                      <span>{formatMoney(project.cost.last30d, project.cost.currency)}</span>
-                    </>
-                  }
-                />
-              )
-            })}
+            {sorted.map((project) => (
+              <CostProjectRow key={project.project} project={project} />
+            ))}
           </ul>
         )}
       </Card>
@@ -110,17 +131,6 @@ export function CostTab({ report, projects }: { report: Report; projects: Projec
           <CostSummary cost={report.otherCost} />
         </Card>
       )}
-
-      <CollapsedSection label="Per-project breakdown" count={sorted.length}>
-        <div className="space-y-3">
-          {sorted.map((project) => (
-            <div key={project.project}>
-              <div className="mb-1 text-sm font-medium">{project.name}</div>
-              <CostSummary cost={project.cost} />
-            </div>
-          ))}
-        </div>
-      </CollapsedSection>
     </div>
   )
 }

@@ -27,6 +27,25 @@ export function effectiveLevel(findings: Finding[], lifecycle: Map<string, Lifec
   return worst
 }
 
+/** The one place "how many are open vs. resolved, per level" gets counted --
+ *  the Overview strip (estate-wide) and each project card (one project's
+ *  findings) both call this instead of re-walking their own findings list,
+ *  so "0 (4)" means the same thing, computed the same way, everywhere it
+ *  appears. `open` is what `effectiveLevel`/the severity tab badges already
+ *  show; `acked` is its exact complement. */
+export function splitFindingCounts(
+  findings: Finding[],
+  lifecycle: Map<string, LifecycleFinding>
+): { open: Record<Exclude<Level, "ok">, number>; acked: Record<Exclude<Level, "ok">, number> } {
+  const open: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
+  const acked: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
+  for (const finding of findings) {
+    if (lifecycle.get(finding.key)?.state === "acked") acked[finding.level] += 1
+    else open[finding.level] += 1
+  }
+  return { open, acked }
+}
+
 /** The raw `var()` reference, for the charts — they set `style`/`background`
  *  rather than a Tailwind class, so they can't use LEVEL_TEXT. */
 export const HEALTH_STATUS_VAR: Record<Level, string> = {

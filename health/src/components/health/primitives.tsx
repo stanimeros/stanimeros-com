@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
-import type { CostBreakdown, Finding, Level, LifecycleFinding, ProjectResult } from "./types"
+import type { CostBreakdown, Finding, Level, LifecycleFinding } from "./types"
 import { LEVEL_CHIP_BG, LEVEL_ICON, LEVEL_TEXT } from "./levels"
 import { duration, exactTime, findingsToMarkdown, formatMoney } from "./format"
 
@@ -160,20 +160,6 @@ export function CostSummary({ cost, limit = 5 }: { cost: CostBreakdown; limit?: 
         ))}
       </ul>
     </div>
-  )
-}
-
-/** "status icon · project name ………… figure" — the row shape both the cost
- *  and error breakdowns use; only the right-hand figure differs. */
-export function ProjectValueRow({ project, right }: { project: ProjectResult; right: ReactNode }) {
-  return (
-    <li className="flex items-center justify-between gap-3 py-1.5 text-sm">
-      <span className="flex min-w-0 items-center gap-2">
-        <StatusIcon level={project.status} />
-        <span className="truncate">{project.name}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2">{right}</span>
-    </li>
   )
 }
 

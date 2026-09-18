@@ -5,7 +5,7 @@
 import { AlertCircle, CheckCircle2 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import type { Level, LifecycleFinding, ProjectResult, Report } from "./types"
-import { LEVEL_STYLE, LEVEL_TEXT } from "./levels"
+import { LEVEL_STYLE, LEVEL_TEXT, splitFindingCounts } from "./levels"
 import { formatValue } from "./format"
 import { CollapsedSection, StatusIcon } from "./primitives"
 
@@ -33,12 +33,7 @@ function ProjectOverviewCard({
   lifecycle: Map<string, LifecycleFinding>
   onSelect: (project: ProjectResult, tab: string) => void
 }) {
-  const counts: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
-  const resolved: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
-  for (const finding of project.findings) {
-    if (lifecycle.get(finding.key)?.state === "acked") resolved[finding.level] += 1
-    else counts[finding.level] += 1
-  }
+  const { open: counts, acked: resolved } = splitFindingCounts(project.findings, lifecycle)
   // All three are finding counts, so the row reads as one series. The raw
   // Cloud Logging line count used to sit in the first cell — a different
   // measure over a different window, which made the three numbers look

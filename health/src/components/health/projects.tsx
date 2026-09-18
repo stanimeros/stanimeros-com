@@ -27,27 +27,28 @@ export function ProjectCard({ project }: { project: ProjectResult }) {
       className={`gap-3 px-4 py-4 ${LEVEL_STYLE[project.status]}`}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
+        {/* Arrow leads, on the far left -- the one convention every
+            expandable on this page uses now (CollapsedSection, the Cost tab's
+            per-project rows), so "this row opens into more" always reads the
+            same way regardless of which component it's built from. */}
         <CollapsibleTrigger className="flex w-full items-start justify-between gap-3 text-left">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusIcon level={project.status} />
-              <span className="font-semibold">{project.name}</span>
-              <span className="font-mono text-xs text-muted-foreground">{project.project}</span>
-              {/* Plan isn't a severity signal — no chroma. */}
-              <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                {project.plan}
-              </span>
+          <div className="flex min-w-0 items-start gap-2">
+            <ExpandArrow open={open} className="mt-0.5 size-3.5 shrink-0" />
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusIcon level={project.status} />
+                <span className="font-semibold">{project.name}</span>
+                <span className="font-mono text-xs text-muted-foreground">{project.project}</span>
+                {/* Plan isn't a severity signal — no chroma. */}
+                <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                  {project.plan}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5 text-right">
-            <div>
-              {project.cost ? (
-                <div className="text-sm">{formatMoney(project.cost.last30d, project.cost.currency)}</div>
-              ) : null}
-              <div className="text-xs text-muted-foreground">{open ? "hide" : "details"}</div>
-            </div>
-            <ExpandArrow open={open} className="size-3.5" />
-          </div>
+          {project.cost ? (
+            <div className="shrink-0 text-sm">{formatMoney(project.cost.last30d, project.cost.currency)}</div>
+          ) : null}
         </CollapsibleTrigger>
 
         <CollapsibleContent className="space-y-4 overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down data-[state=open]:mt-4 data-[state=open]:border-t data-[state=open]:border-border data-[state=open]:pt-3">

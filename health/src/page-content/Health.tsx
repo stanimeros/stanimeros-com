@@ -39,6 +39,7 @@ import {
   SEVERITY_TABS,
   TAB_VALUES,
   effectiveLevel,
+  splitFindingCounts,
 } from "@/components/health/levels"
 import {
   exactTime,
@@ -148,13 +149,16 @@ export default function Health() {
     [hashState]
   )
 
-  // Light/dark is a toggle, default light, remembered per viewer.
-  const [theme, setThemeState] = useState<"light" | "dark">("light")
-
-  useEffect(() => {
+  // Light/dark is a toggle, default light, remembered per viewer. Read
+  // synchronously in the initializer, not a mount effect -- a mount effect
+  // means the *first* render (and everything painted before it, including
+  // the sign-in/loading screens below) always uses the "light" default,
+  // then flips a frame later once the stored value loads. For a dark-mode
+  // viewer that's a flash of the wrong theme on every load/refresh.
+  const [theme, setThemeState] = useState<"light" | "dark">(() => {
     const storedTheme = readLocalStorage("health.theme")
-    if (storedTheme === "dark" || storedTheme === "light") setThemeState(storedTheme)
-  }, [])
+    return storedTheme === "dark" ? "dark" : "light"
+  })
 
   const setTheme = useCallback((next: "light" | "dark") => {
     setThemeState(next)
@@ -269,27 +273,12 @@ export default function Health() {
    *  not projects, and skips acked ones so a badge never contradicts the
    *  list it labels. `ackedCounts` is the companion tally (same split,
    *  inverted) so every place that shows a severity count can add "(N
-   *  resolved)" next to it without re-deriving the acked half itself. */
-  const findingCounts = useMemo(() => {
-    const counts: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
-    for (const project of projects) {
-      for (const finding of project.findings) {
-        if (lifecycle.get(finding.key)?.state === "acked") continue
-        counts[finding.level] += 1
-      }
-    }
-    return counts
-  }, [projects, lifecycle])
-
-  const ackedCounts = useMemo(() => {
-    const counts: Record<Exclude<Level, "ok">, number> = { critical: 0, warn: 0, low: 0 }
-    for (const project of projects) {
-      for (const finding of project.findings) {
-        if (lifecycle.get(finding.key)?.state === "acked") counts[finding.level] += 1
-      }
-    }
-    return counts
-  }, [projects, lifecycle])
+   *  resolved)" next to it without re-deriving the acked half itself. Both
+   *  come from the one shared split in levels.ts -- see splitFindingCounts. */
+  const { open: findingCounts, acked: ackedCounts } = useMemo(
+    () => splitFindingCounts(projects.flatMap((p) => p.findings), lifecycle),
+    [projects, lifecycle]
+  )
 
   // The header icon reads report.status, the same un-acked-aware field as
   // each project card — derive it from the already-corrected `projects` list
@@ -358,7 +347,7 @@ export default function Health() {
 
   if (!authReady) {
     return (
-      <div className="health-light flex min-h-svh items-center justify-center bg-background text-foreground">
+      <div className={`flex min-h-svh items-center justify-center bg-background text-foreground ${theme === "light" ? "health-light" : ""}`}>
         <Loader2 className="size-5 animate-spin text-muted-foreground" aria-hidden="true" />
       </div>
     )
@@ -366,7 +355,7 @@ export default function Health() {
 
   if (!user) {
     return (
-      <div className="health-light flex min-h-svh flex-col items-center justify-center gap-4 bg-background px-4 text-foreground">
+      <div className={`flex min-h-svh flex-col items-center justify-center gap-4 bg-background px-4 text-foreground ${theme === "light" ? "health-light" : ""}`}>
         <div className="flex items-center gap-2 text-xl font-semibold">
           <Activity className="size-5" aria-hidden="true" />
           System health
