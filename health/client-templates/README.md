@@ -17,6 +17,18 @@ Keep both when copying a template into a new project. Don't raise
 `maxReportsPerSession` far above the default without a reason -- it's the
 one thing standing between a bug in this app and its blast radius.
 
+**Uncaught errors only get you so far.** `initHealthReporting`/`init` alone
+only wires up what's *uncaught* -- window.onerror/unhandledrejection (web),
+FlutterError/PlatformDispatcher (Flutter). An error the app catches itself
+and handles -- shows the user a friendly "something went wrong" message
+for, say -- never reaches either of those, so it's invisible here no matter
+how often it happens. That's the case that actually answers "how would I
+know my users hit this 500 times a day": call `reportError()` (web) /
+`HealthReporting.report()` (Flutter) directly from that catch block. Report
+the underlying technical message, not the friendly copy shown to the user
+-- that's what lets two different real causes show up as two distinct
+signatures on the dashboard instead of one uninformative bucket.
+
 ## Onboarding a new project
 
 1. Add the project to `../functions/lib/config.js`'s `PROJECTS` list, if it
@@ -52,6 +64,21 @@ delay anything render-blocking):
 (`PUBLIC_HEALTH_CLIENT_TOKEN` is not a real secret once shipped -- it only
 limits which single project's findings a leaked value could spam. Set it in
 the app's own `.env`/hosting env vars.)
+
+For a caught error the app handles gracefully, call `reportError` directly
+from wherever it's caught -- an API client wrapper, a form submit handler,
+an error boundary's `componentDidCatch`:
+
+```ts
+import { reportError } from "@/lib/reportClientError"
+
+try {
+  await save(data)
+} catch (err) {
+  showToast("Couldn't save -- please try again")
+  reportError(err instanceof Error ? err.message : String(err))
+}
+```
 
 ## Vite / plain React
 
@@ -97,6 +124,19 @@ void main() {
 
 (`--dart-define=HEALTH_CLIENT_TOKEN=...` at build time, or read it however
 the app already manages build-time config.)
+
+For a caught error the app handles gracefully -- a try/catch around an API
+call that falls back to a cached value and shows a snackbar, say -- call
+`HealthReporting.report()` directly:
+
+```dart
+try {
+  await save(data);
+} catch (err) {
+  showSnackBar('Could not save -- please try again');
+  HealthReporting.report(err.toString());
+}
+```
 
 Where a project's Crashlytics BigQuery export is already wired up
 (`crashlyticsApps` in `config.js`), this is redundant for native
