@@ -756,7 +756,10 @@ test("analyzeIam flags an unrestricted API key as low", () => {
 test("LEVEL_BY_KIND holds every flat-severity kind, and none of the graduated ones", () => {
   assert.equal(LEVEL_BY_KIND.quota_exhausted, "critical");
   assert.equal(LEVEL_BY_KIND.billing, "critical");
-  assert.equal(LEVEL_BY_KIND.deploy_failure, "critical");
+  // low, not critical: a failed rollout is loud live in the deploy command's
+  // own output while it's happening, so by the time a sweep surfaces it from
+  // logs it's stale news, not something to page over.
+  assert.equal(LEVEL_BY_KIND.deploy_failure, "low");
   assert.equal(LEVEL_BY_KIND.stall, "warn");
   assert.equal(LEVEL_BY_KIND.missing_index, "warn");
   assert.equal(LEVEL_BY_KIND.rules_denied, "warn");

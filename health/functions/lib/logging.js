@@ -52,7 +52,14 @@ const ERROR_KINDS = [
   // and always critical, so a false positive here is an alert that can't be
   // ignored and isn't real.
   ["billing", /BILLING_DISABLED|billing[^.\n]{0,24}(disabled|not enabled|closed|suspended)|enable billing/i],
-  ["deploy_failure", /deployment failed|container failed to start|Revision .* is not ready/i],
+  // The two extra phrasings are Cloud Run's own rollout-health wording, seen
+  // alongside "container failed to start" during a bad revision's own
+  // startup probe rather than always in the same log line as it -- without
+  // them, a deploy that fails differently (a probe timeout with no
+  // "container failed to start" substring, or an instance that never
+  // started at all) fell through to the unclassified-error rule and showed
+  // up critical instead of as the deploy issue it actually is.
+  ["deploy_failure", /deployment failed|container failed to start|Revision .* is not ready|STARTUP TCP probe failed|instance was not started/i],
 ];
 
 // Silent killers: worth surfacing even when the raw error count is low.
@@ -142,7 +149,13 @@ function signature(entry) {
   }
   if (!msg) msg = NO_MESSAGE;
   const collapsed = String(msg).split(/\s+/).filter(Boolean).join(" ").replace(NOISE, "#");
-  return collapsed.slice(0, 140);
+  // 450, not the original 140: long enough that a stack trace's first few
+  // frames -- usually the actually-useful part -- survive, short enough that
+  // two occurrences of the same error still collapse to one signature rather
+  // than fragmenting on noise deep in the trace (NOISE above already strips
+  // the usual suspects -- addresses, UUIDs, request ids -- from whatever
+  // survives the cut).
+  return collapsed.slice(0, 450);
 }
 
 // Name the specific thing that failed, e.g. "function:onStudioCreated", not

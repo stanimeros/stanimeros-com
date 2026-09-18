@@ -35,6 +35,27 @@ test("a brand-new finding key is written as open, firstSeen = lastSeen = now", (
   assert.equal(data.ackedUntil, null);
 });
 
+test("count and lastOccurred are carried from the finding into the persisted document", () => {
+  const projects = [
+    {
+      project: "proj",
+      findings: [finding("proj:errors:x", { kind: "errors", count: 7, lastOccurred: "2026-09-16T11:58:00Z" })],
+    },
+  ];
+  const writes = planLifecycleUpdate(report(projects), new Map(), NOW);
+  const data = writes[0].data;
+  assert.equal(data.count, 7);
+  assert.equal(data.lastOccurred, "2026-09-16T11:58:00Z");
+});
+
+test("count and lastOccurred default to null for a finding kind that doesn't carry them", () => {
+  const projects = [{ project: "proj", findings: [finding("proj:spike:firestore.reads")] }];
+  const writes = planLifecycleUpdate(report(projects), new Map(), NOW);
+  const data = writes[0].data;
+  assert.equal(data.count, null);
+  assert.equal(data.lastOccurred, null);
+});
+
 test("a key present again updates lastSeen and increments runsSeen without touching firstSeen", () => {
   const key = "proj:spike:firestore.reads";
   const existing = new Map([

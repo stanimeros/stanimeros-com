@@ -135,6 +135,16 @@ function planLifecycleUpdate(report, existingByKey, now) {
         // to -- undefined here for everything else, which
         // advanceDeployHistory treats as "nothing new".
         deployedAt: finding.deployedAt || null,
+        // count/lastOccurred: only set for log-shaped kinds (errors,
+        // client-error, crash) -- null for anything else (spike, sa-key,
+        // ...), same "always write the field, null when this finding kind
+        // doesn't have one" convention as deployedAt above. Without these,
+        // health_findings carried firstSeen/lastSeen/state but silently
+        // dropped the two fields that say *what* happened and *when it last
+        // actually fired* -- previously only visible via the current run's
+        // report snapshot, gone the moment a newer run replaced it.
+        count: finding.count ?? null,
+        lastOccurred: finding.lastOccurred || null,
       });
     }
   }
@@ -166,6 +176,8 @@ function planLifecycleUpdate(report, existingByKey, now) {
           deployedAt: cur.deployedAt || null,
           deploys: [],
           deploysSinceFirstSeen: 0,
+          count: cur.count,
+          lastOccurred: cur.lastOccurred,
         },
       });
       continue;

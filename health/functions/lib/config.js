@@ -178,7 +178,12 @@ const LEVEL_BY_KIND = {
   // real failures
   quota_exhausted: "critical",
   billing: "critical",
-  deploy_failure: "critical",
+  // A failed rollout is loud in the place that actually matters while it's
+  // happening -- the deploy command's own output, watched live by whoever
+  // ran it -- so by the time a sweep picks it up from logs hours later it's
+  // stale news, not an alert. `low` still lists it (estate hygiene: a
+  // revision that never got cleaned up, say), just without paging anyone.
+  deploy_failure: "low",
   // Crash-shaped: something ran and died. These were classified by logging.js
   // but graded nowhere, so they fell through to the raw count rule and were
   // only ever critical by accident -- they are critical on purpose now.

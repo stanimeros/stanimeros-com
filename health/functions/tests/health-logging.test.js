@@ -83,6 +83,13 @@ test("classify returns deploy_failure for a failed deployment error", () => {
   assert.equal(classify("Deployment failed: container failed to start"), "deploy_failure");
 });
 
+test("classify returns deploy_failure for a startup probe failure with no 'container failed to start' substring", () => {
+  assert.equal(
+    classify('Default STARTUP TCP probe failed 1 time consecutively for container "worker" on port 8080. The instance was not started.'),
+    "deploy_failure"
+  );
+});
+
 test("classify returns other when no known pattern matches", () => {
   assert.equal(classify("Something unrelated went wrong"), "other");
 });
