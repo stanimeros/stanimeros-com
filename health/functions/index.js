@@ -158,7 +158,16 @@ exports.reportClientError = onRequest(
     // string args and writes it *after* spreading this data object in, so a
     // field literally named `message` here is silently overwritten by that
     // -- see entryFromArgs in firebase-functions/lib/logger/index.js.
-    logger.error("client error", {
+    //
+    // logger.warn, not .error: this function's own Cloud Run logs live in
+    // *this* project (stanimeros-dev), so an ERROR-severity entry here would
+    // also be picked up by the ordinary per-project log scan (logging.js's
+    // readErrors, severity>=ERROR) and misattributed as stanimeros-dev's own
+    // error -- grading its own homework a second time, the same class of bug
+    // SELF_AUDIT_TYPES/isSelfAuditDenial in logging.js exist to prevent.
+    // WARNING sits below that filter's threshold; clientErrors.js finds this
+    // entry independently via jsonPayload.kind, never by severity.
+    logger.warn("client error", {
       kind: "client-error",
       project,
       errorMessage: message,
