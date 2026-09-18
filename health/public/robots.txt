@@ -1,0 +1,3 @@
+# Internal dashboard — gated behind sign-in, nothing here for a crawler.
+User-agent: *
+Disallow: /

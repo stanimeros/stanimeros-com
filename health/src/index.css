@@ -68,6 +68,11 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 :root {
+  /* Without this, native form controls (a <select>'s dropdown, autofill
+     chrome, etc.) ignore our custom palette entirely and render using the
+     OS/browser's own dark-mode preference instead -- a black dropdown on an
+     otherwise light page. */
+  color-scheme: dark;
   --radius: 0.625rem;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -149,6 +154,7 @@ h1, h2, h3, h4, h5, h6 {
    site is dark by default (see :root above) — this page alone opts into a
    white, "monitoring tool" look, scoped so nothing else is affected. */
 .health-light {
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);

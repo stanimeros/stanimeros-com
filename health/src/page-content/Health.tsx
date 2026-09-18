@@ -11,6 +11,7 @@ import {
   LogOut,
   Moon,
   RefreshCw,
+  RotateCw,
   Sun,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
@@ -163,13 +164,21 @@ export default function Health() {
   // The chart palette (palette.css) keys off `data-theme` on the document
   // root — apply the page's own choice there for as long as it's mounted,
   // regardless of the rest of the (dark) site or the system preference.
+  // The shadcn token override (`.health-light`) has to go on the root too,
+  // not just the page's own wrapper div: Radix portals (Select, Tooltip,
+  // Popover) render their content as a sibling appended straight to
+  // `<body>`, outside that wrapper, so they'd otherwise fall back to the
+  // rest-of-site dark palette in `:root` — a black dropdown in "light" mode.
   useEffect(() => {
     const root = document.documentElement
-    const previous = root.getAttribute("data-theme")
+    const previousDataTheme = root.getAttribute("data-theme")
+    const hadLightClass = root.classList.contains("health-light")
     root.setAttribute("data-theme", theme)
+    root.classList.toggle("health-light", theme === "light")
     return () => {
-      if (previous) root.setAttribute("data-theme", previous)
+      if (previousDataTheme) root.setAttribute("data-theme", previousDataTheme)
       else root.removeAttribute("data-theme")
+      root.classList.toggle("health-light", hadLightClass)
     }
   }, [theme])
 
@@ -348,39 +357,50 @@ export default function Health() {
   return (
     <div className={`min-h-svh bg-background text-foreground ${theme === "light" ? "health-light" : ""}`}>
       <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-8">
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <header className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
               <Activity className="size-4.5" aria-hidden="true" />
             </div>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-semibold">System health</h1>
                 {report && <StatusIcon level={effectiveReportStatus} />}
               </div>
               {report && (
-                <p className="flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
-                  <span title={exactTime(report.generated)}>
+                <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm text-muted-foreground">
+                  <span className="whitespace-nowrap" title={exactTime(report.generated)}>
                     {LEVEL_LABEL[effectiveReportStatus]} · {timeAgo(report.generated)}
                   </span>
-                  · {report.mode} · {Math.round(report.durationMs / 1000)}s · {report.logHours}h error window
+                  <span className="whitespace-nowrap">· {report.mode}</span>
+                  <span className="whitespace-nowrap">· {Math.round(report.durationMs / 1000)}s</span>
+                  <span className="whitespace-nowrap">· {report.logHours}h error window</span>
                   {/* Three runs a day; past ~9h the page is showing a sweep
                       that should already have been replaced. Say so rather
                       than look current. */}
                   {Date.now() - new Date(report.generated).getTime() > 9 * 3600000 && (
-                    <span className={LEVEL_TEXT.warn}>· stale</span>
+                    <span className={`whitespace-nowrap ${LEVEL_TEXT.warn}`}>· stale</span>
                   )}
                   {!viewingRunId && (
-                    <span title={exactTime(nextScheduledRun().toISOString())}>
+                    <span className="whitespace-nowrap" title={exactTime(nextScheduledRun().toISOString())}>
                       · next run {timeUntil(nextScheduledRun().toISOString())}
                     </span>
                   )}
-                  {loadingReport && <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />}
+                  {loadingReport && <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />}
                 </p>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => load(viewingRunId ?? undefined)}
+              disabled={busy || loadingReport}
+              title="Reload the current report without running a new sweep."
+            >
+              <RotateCw className={loadingReport && !busy ? "animate-spin" : ""} aria-hidden="true" />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
             <Button
               variant="outline"
               onClick={runNow}

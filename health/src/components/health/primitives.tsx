@@ -8,6 +8,7 @@ import type { ReactNode } from "react"
 import { Check, ChevronRight, Copy, RotateCcw, CheckCircle2, Gauge } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { CostBreakdown, Finding, Level, LifecycleFinding, ProjectResult } from "./types"
 import { LEVEL_CHIP_BG, LEVEL_ICON, LEVEL_TEXT } from "./levels"
@@ -191,18 +192,79 @@ export function FindingsTable({
   onAck?: (key: string, ack: boolean) => void
 }) {
   const [expandedKey, setExpandedKey] = useState<string | null>(null)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
   if (findings.length === 0) return null
   // Project, Kind, Count, Message -- Details (age/flapping) and Ack both
   // live only in the expanded panel now, so neither takes a header column.
-  const columnCount = 4
+  const columnCount = 5
+
+  const toggleOne = (key: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(key)
+      else next.delete(key)
+      return next
+    })
+  }
+  const allSelected = findings.length > 0 && findings.every((f) => selected.has(f.key))
+  const someSelected = selected.size > 0
+  const toggleAll = (checked: boolean) => {
+    setSelected(checked ? new Set(findings.map((f) => f.key)) : new Set())
+  }
+
+  const selectedFindings = findings.filter((f) => selected.has(f.key))
+  // Every row a given FindingsTable renders comes from the same active/acked
+  // split its caller already made (SeverityTab passes one array or the
+  // other) -- so "are the selected rows acked" reduces to "is the first one".
+  const selectionIsAcked = selectedFindings.length > 0 && lifecycle?.get(selectedFindings[0].key)?.state === "acked"
+
   return (
     <div className="overflow-x-auto">
+      {someSelected && (
+        <div className="mb-2 flex flex-wrap items-center gap-3 rounded-md bg-muted/60 px-2 py-1.5 text-xs">
+          <span className="font-medium">{selected.size} selected</span>
+          <CopyMarkdownButton
+            label="Copy selected"
+            getText={() => findingsToMarkdown(`${selected.size} selected finding(s)`, selectedFindings, lifecycle)}
+          />
+          {onAck && (
+            <button
+              type="button"
+              onClick={() => {
+                for (const finding of selectedFindings) onAck(finding.key, !selectionIsAcked)
+                setSelected(new Set())
+              }}
+              className="inline-flex items-center gap-1 text-muted-foreground underline-offset-2 hover:underline"
+            >
+              {selectionIsAcked ? (
+                <>
+                  <RotateCcw className="size-3" aria-hidden="true" />
+                  Mark as pending
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="size-3" aria-hidden="true" />
+                  Mark as resolved
+                </>
+              )}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSelected(new Set())}
+            className="text-muted-foreground underline-offset-2 hover:underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
       <table className="w-full table-fixed text-sm">
         {/* Fixed layout so the columns hold a sane shape instead of
             stretching to whatever's longest in them — Message is the only
             one that should ever eat space, everything else is a fixed
             width sized to its own content. */}
         <colgroup>
+          <col className="w-6" />
           {/* Kind folds into the Project cell on mobile instead of getting
               its own column -- at phone width, four fixed columns left
               Message a sliver too narrow to read; dropping one column there
@@ -214,6 +276,13 @@ export function FindingsTable({
         </colgroup>
         <thead className="text-xs text-muted-foreground">
           <tr className="text-left">
+            <th className="py-1 pr-2 font-normal">
+              <Checkbox
+                checked={allSelected}
+                onCheckedChange={(checked) => toggleAll(checked === true)}
+                aria-label="Select all findings"
+              />
+            </th>
             <th className="py-1 pr-2 font-normal">Project</th>
             <th className="hidden py-1 pr-2 font-normal sm:table-cell">Kind</th>
             <th className="py-1 pr-2 font-normal">Message</th>
@@ -224,6 +293,7 @@ export function FindingsTable({
           {findings.map((finding) => {
             const life = lifecycle?.get(finding.key)
             const expanded = expandedKey === finding.key
+            const checked = selected.has(finding.key)
             return (
               <Fragment key={finding.key}>
                 <tr
@@ -239,6 +309,13 @@ export function FindingsTable({
                     }
                   }}
                 >
+                  <td className="py-1.5 pr-2" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={(next) => toggleOne(finding.key, next === true)}
+                      aria-label={`Select finding: ${finding.text}`}
+                    />
+                  </td>
                   <td className="overflow-hidden py-1.5 pr-2">
                     <span className="flex min-w-0 items-center gap-1">
                       <ExpandArrow open={expanded} className="size-3 shrink-0" />
