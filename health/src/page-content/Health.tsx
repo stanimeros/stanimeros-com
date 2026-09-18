@@ -54,6 +54,13 @@ import { SeverityTab, ErrorLogPanels } from "@/components/health/tab-severity"
 import { CostTab } from "@/components/health/tab-cost"
 import { ProjectCard } from "@/components/health/projects"
 
+/** Firebase (auth/functions) errors carry a `.message` meant for developers,
+ *  not users — raw text like "internal" or a stack-laden description. Never
+ *  show it directly; always fall back to a generic, user-facing message. */
+function friendlyError(_err: unknown, fallback: string): string {
+  return fallback
+}
+
 /** One filter row above everything it scopes. Project only — the severity
  *  tabs are the level filter now, and a second control that could contradict
  *  the open tab was exactly the kind of thing making this page hard to read. */
@@ -201,7 +208,7 @@ export default function Health() {
       // not a broken page.
       if (code.includes("permission-denied")) setError("This account isn't allowed to view health data.")
       else if (code.includes("not-found")) setError("No report has been generated yet.")
-      else setError((err as Error).message || "Could not load the report.")
+      else setError(friendlyError(err, "Could not load the report."))
     } finally {
       setLoadingReport(false)
     }
@@ -218,7 +225,7 @@ export default function Health() {
       await runHealthCheckNow()
       await load()
     } catch (err) {
-      setError((err as Error).message || "The run failed.")
+      setError(friendlyError(err, "The run failed."))
     } finally {
       setBusy(false)
     }
@@ -296,7 +303,7 @@ export default function Health() {
       try {
         await ackFinding({ key, ack })
       } catch (err) {
-        setError((err as Error).message || "Could not update that acknowledgement.")
+        setError(friendlyError(err, "Could not update that acknowledgement."))
         await load(viewingRunId ?? undefined)
       }
     },
@@ -309,7 +316,7 @@ export default function Health() {
       await markHealthSeen({ runId: report.runId })
       setSeen({ lastViewedRunId: report.runId, lastViewedAt: new Date().toISOString() })
     } catch (err) {
-      setError((err as Error).message || "Could not save that.")
+      setError(friendlyError(err, "Could not save that."))
     }
   }, [report])
 
@@ -329,7 +336,7 @@ export default function Health() {
           System health
         </div>
         <p className="text-sm text-muted-foreground">Internal dashboard. Sign in to continue.</p>
-        <Button onClick={() => signInWithGoogle().catch((e) => setError(e.message))}>
+        <Button onClick={() => signInWithGoogle().catch((e) => setError(friendlyError(e, "Sign-in failed. Please try again.")))}>
           <LogIn aria-hidden="true" />
           Sign in with Google
         </Button>
