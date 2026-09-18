@@ -13,4 +13,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // Same port as the main site's dev server (astro.config.mjs) -- they're
+  // never run at once, so one fixed, memorable port for both beats Vite's
+  // default 5173. `strictPort` so a stale process squatting on it fails
+  // loud instead of silently handing you a different port than you typed.
+  server: {
+    port: 4321,
+    strictPort: true,
+  },
 })

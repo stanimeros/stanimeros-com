@@ -9,6 +9,7 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url))
 export default defineConfig({
   site: 'https://stanimeros.com',
   trailingSlash: 'never',
+  server: { port: 4321 },
   integrations: [react()],
   vite: {
     plugins: [tailwindcss()],

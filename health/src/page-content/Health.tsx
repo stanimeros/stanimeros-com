@@ -356,6 +356,17 @@ export default function Health() {
 
   return (
     <div className={`min-h-svh bg-background text-foreground ${theme === "light" ? "health-light" : ""}`}>
+      {/* `fixed inset-0`, not inline with the content -- a loader anchored in
+          the page flow drifts wherever the scroll position happens to leave
+          it. This one is dead center of the viewport no matter how far down
+          the page you've scrolled, for the initial load and every
+          refresh/run-now after it alike. */}
+      {(loadingReport || busy) && (
+        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-2 bg-background/70 text-muted-foreground backdrop-blur-sm">
+          <Loader2 className="size-6 animate-spin" aria-hidden="true" />
+          <p className="text-sm">{busy ? "Running full sweep…" : report ? "Refreshing…" : "Loading report…"}</p>
+        </div>
+      )}
       <div className="mx-auto w-full max-w-5xl space-y-5 px-4 py-8">
         <header className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
@@ -386,23 +397,28 @@ export default function Health() {
                       · next run {timeUntil(nextScheduledRun().toISOString())}
                     </span>
                   )}
-                  {loadingReport && <Loader2 className="size-3.5 shrink-0 animate-spin" aria-hidden="true" />}
                 </p>
               )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          {/* One toolbar, not a wrapping row of loose buttons -- Refresh and
+              Run now split the row evenly on a phone (so the row fills edge
+              to edge instead of leaving a ragged gap), and settle back to
+              their natural width once the row has room to spare. */}
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
+              className="flex-1 sm:flex-none"
               onClick={() => load(viewingRunId ?? undefined)}
               disabled={busy || loadingReport}
               title="Reload the current report without running a new sweep."
             >
-              <RotateCw className={loadingReport && !busy ? "animate-spin" : ""} aria-hidden="true" />
-              <span className="hidden sm:inline">Refresh</span>
+              <RotateCw aria-hidden="true" />
+              Refresh
             </Button>
             <Button
               variant="outline"
+              className="flex-1 sm:flex-none"
               onClick={runNow}
               disabled={busy || loadingReport}
               title="Full sweep. No email, and the next scheduled alert is unaffected."
@@ -436,13 +452,6 @@ export default function Health() {
             <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
             {error}
           </Card>
-        )}
-
-        {loadingReport && !report && !error && (
-          <div className="flex flex-col items-center justify-center gap-2 py-20 text-muted-foreground">
-            <Loader2 className="size-5 animate-spin" aria-hidden="true" />
-            <p className="text-sm">Loading report…</p>
-          </div>
         )}
 
         {/* The run history as a band. Click a cell to open that run. */}
