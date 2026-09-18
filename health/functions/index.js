@@ -118,6 +118,23 @@ const clientErrorLimiter = makeLimiter();
 const ALLOWED_ORIGINS = [
   "https://stanimeros.com",
   "https://stanimeros-dev.web.app",
+  "https://stanimeros-health.web.app",
+  "https://athens-mytransfer.com",
+  "https://athens-mytransfer.web.app",
+  "https://ai.nikimargariti.gr",
+  "https://niki-margariti-agent.web.app",
+  "https://nourea-dashboard.web.app",
+  "https://process-a7a0f.web.app",
+  "https://thr.topaketo.de",
+  "https://parcels-ecdc6.web.app",
+  "https://veridictum.ai",
+  "https://veridictum.web.app",
+  "https://admin.tattoo-healer.com",
+  "https://tattoo-healer.web.app",
+  "https://hedeos.gr",
+  "https://hedeos-f6e6c.web.app",
+  "https://ski-greece.gr",
+  "https://poudra-c2e70.web.app",
 ];
 
 // Hard caps on what a single report can cost this function's own log volume
