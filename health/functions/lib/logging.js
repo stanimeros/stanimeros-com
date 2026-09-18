@@ -37,6 +37,20 @@ const ERROR_KINDS = [
   // where the count threshold graded it critical.
   ["rules_denied", /PERMISSION_DENIED|INSUFFICIENT_PERMISSIONS|Missing or insufficient permissions|permission-denied|caller does not have permission|does not have [a-z.]+ permission/i],
   ["quota_exhausted", /RESOURCE_EXHAUSTED|quota exceeded|rate limit/i],
+  // Ahead of function_timeout: a bad rollout's own "container failed to
+  // start ... within the allocated timeout" wording contains the bare word
+  // "timeout", which function_timeout's `timed? ?out` would otherwise claim
+  // first -- grading a failed deploy as a function-execution timeout
+  // (critical) instead of a deploy issue (low). The two extra phrasings
+  // below (STARTUP TCP probe failed / instance was not started) are Cloud
+  // Run's own rollout-health wording, seen alongside "container failed to
+  // start" during a bad revision's own startup probe rather than always in
+  // the same log line as it -- without them, a deploy that fails
+  // differently (a probe timeout with no "container failed to start"
+  // substring, or an instance that never started at all) fell through to
+  // the unclassified-error rule and showed up critical instead of as the
+  // deploy issue it actually is.
+  ["deploy_failure", /deployment failed|container failed to start|Revision .* is not ready|STARTUP TCP probe failed|instance was not started/i],
   ["function_timeout", /Function execution took \d+ ms.*timeout|timed? ?out|DEADLINE_EXCEEDED/i],
   // \b around OOM because a bare /OOM/i matches "boom", "broom", "bloomberg".
   ["out_of_memory", /memory limit|Exceeded memory|\bOOM\b|out of memory/i],
@@ -52,14 +66,6 @@ const ERROR_KINDS = [
   // and always critical, so a false positive here is an alert that can't be
   // ignored and isn't real.
   ["billing", /BILLING_DISABLED|billing[^.\n]{0,24}(disabled|not enabled|closed|suspended)|enable billing/i],
-  // The two extra phrasings are Cloud Run's own rollout-health wording, seen
-  // alongside "container failed to start" during a bad revision's own
-  // startup probe rather than always in the same log line as it -- without
-  // them, a deploy that fails differently (a probe timeout with no
-  // "container failed to start" substring, or an instance that never
-  // started at all) fell through to the unclassified-error rule and showed
-  // up critical instead of as the deploy issue it actually is.
-  ["deploy_failure", /deployment failed|container failed to start|Revision .* is not ready|STARTUP TCP probe failed|instance was not started/i],
 ];
 
 // Silent killers: worth surfacing even when the raw error count is low.

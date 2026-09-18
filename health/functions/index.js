@@ -103,6 +103,17 @@ const CLIENT_ERROR_TOKENS = new Map(
 
 const KNOWN_PROJECT_IDS = new Set(PROJECTS.map((p) => p.id));
 
+// Production origins only -- deliberately no localhost/staging/preview
+// entries. This is a browser-side gate, not a real access-control boundary
+// (a non-browser client sets its own Origin header and CORS never sees it),
+// but combined with the per-project token above it closes the cheap abuse
+// path: a stolen token embedded in a script on some other live site. Grows
+// by one line each time another app is wired up to this endpoint.
+const ALLOWED_ORIGINS = [
+  "https://stanimeros.com",
+  "https://stanimeros-dev.web.app",
+];
+
 // Hard caps on what a single report can cost this function's own log volume
 // -- an attacker (or a genuinely broken page in a tight retry loop) with a
 // valid token can still spam, but not with unbounded-size payloads.
@@ -121,7 +132,7 @@ function truncated(value, max) {
 // clientErrors.js's module doc for why the finding lives here instead of in
 // the reporting app's own project.
 exports.reportClientError = onRequest(
-  { region: "europe-west1", cors: true, maxInstances: 20 },
+  { region: "europe-west1", cors: ALLOWED_ORIGINS, maxInstances: 20 },
   async (req, res) => {
     if (req.method !== "POST") {
       res.status(405).json({ error: "method not allowed" });
