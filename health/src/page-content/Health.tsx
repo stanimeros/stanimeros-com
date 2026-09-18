@@ -589,9 +589,15 @@ export default function Health() {
 
             <TabsContent value="projects">
               <div className="space-y-3">
-                {filteredProjects.map((project) => (
-                  <ProjectCard key={project.project} project={project} />
-                ))}
+                {/* Highest spender first, same ordering the Cost tab uses --
+                    a Spark project (cost: null) has nothing to rank by cost,
+                    so it sorts to the end rather than wherever severity
+                    happened to leave it. */}
+                {[...filteredProjects]
+                  .sort((a, b) => (b.cost?.last30d ?? -1) - (a.cost?.last30d ?? -1))
+                  .map((project) => (
+                    <ProjectCard key={project.project} project={project} />
+                  ))}
               </div>
             </TabsContent>
 

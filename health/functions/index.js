@@ -4,7 +4,8 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 
 const { runHealthCheck, buildReport } = require("./lib");
-const { PROJECTS } = require("./lib/config");
+const { PROJECTS, thresholdsFor } = require("./lib/config");
+const { makeLimiter, allow: withinRateLimit } = require("./lib/rateLimit");
 
 setGlobalOptions({ maxInstances: 10, region: "europe-west1" });
 
@@ -103,6 +104,11 @@ const CLIENT_ERROR_TOKENS = new Map(
 
 const KNOWN_PROJECT_IDS = new Set(PROJECTS.map((p) => p.id));
 
+// Shared across invocations on the same warm instance -- see rateLimit.js's
+// module doc for why per-instance (not Firestore-backed) is the right
+// tradeoff here.
+const clientErrorLimiter = makeLimiter();
+
 // Production origins only -- deliberately no localhost/staging/preview
 // entries. This is a browser-side gate, not a real access-control boundary
 // (a non-browser client sets its own Origin header and CORS never sees it),
@@ -153,6 +159,16 @@ exports.reportClientError = onRequest(
     // state for this endpoint.
     if (!expected || token !== expected) {
       res.status(401).json({ error: "invalid token" });
+      return;
+    }
+
+    // Gate on frequency before doing anything else -- a client stuck in a
+    // retry loop (broken useEffect, most often) is now known-legitimate
+    // (right project, right token), so this is the one place left to stop
+    // it from turning into unbounded log-ingestion / invocation cost. No
+    // logger call on the 429 path itself, for the same reason.
+    if (!withinRateLimit(clientErrorLimiter, project, thresholdsFor(project).clientErrorPerMinute)) {
+      res.status(429).json({ error: "rate limited" });
       return;
     }
 

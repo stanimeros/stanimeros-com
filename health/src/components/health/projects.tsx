@@ -39,8 +39,18 @@ export function ProjectCard({ project }: { project: ProjectResult }) {
                 <StatusIcon level={project.status} />
                 <span className="font-semibold">{project.name}</span>
                 <span className="font-mono text-xs text-muted-foreground">{project.project}</span>
-                {/* Plan isn't a severity signal — no chroma. */}
-                <span className="rounded border border-border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                {/* Plan isn't a severity signal, so it stays off the page's
+                    reserved hues (palette.css) -- but Blaze (billable) and
+                    Spark (free, can't spike a bill) are worth telling apart
+                    at a glance, so Blaze gets the bolder/filled treatment and
+                    Spark stays the quiet outline. Weight, not a new hue. */}
+                <span
+                  className={`rounded border px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${
+                    project.plan === "Blaze"
+                      ? "border-foreground/25 bg-foreground/10 text-foreground"
+                      : "border-border text-muted-foreground"
+                  }`}
+                >
                   {project.plan}
                 </span>
               </div>

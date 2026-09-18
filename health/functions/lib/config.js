@@ -129,6 +129,13 @@ const DEFAULTS = {
   // it is worth a row.
   clientErrorFloor: 5,
   clientErrorCriticalFloor: 100,
+  // reportClientError's per-instance, per-minute cap on a single project's
+  // token (lib/rateLimit.js) -- the backstop against a client-side retry
+  // loop (a broken useEffect, most often) hammering the endpoint. Well above
+  // any real error boundary's legitimate burst (one tab throwing the same
+  // error a handful of times), low enough to keep a runaway loop from
+  // running up log-ingestion volume unbounded.
+  clientErrorPerMinute: 30,
   // Crashlytics: any distinct fatal-crash signature earns at least a `warn`
   // (crashFloor -- effectively always true once the export exists, kept as a
   // knob rather than hard-coded 0 for symmetry with the other *Floor keys);
