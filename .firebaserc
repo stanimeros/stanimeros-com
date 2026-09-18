@@ -1,5 +1,18 @@
 {
   "projects": {
     "default": "stanimeros-dev"
-  }
+  },
+  "targets": {
+    "stanimeros-dev": {
+      "hosting": {
+        "main": [
+          "stanimeros-dev"
+        ],
+        "health": [
+          "stanimeros-health"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }

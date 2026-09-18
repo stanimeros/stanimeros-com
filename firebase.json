@@ -1,5 +1,7 @@
 {
-  "hosting": {
+  "hosting": [
+    {
+    "target": "main",
     "public": "dist",
     "ignore": [
       "firebase.json",
@@ -92,7 +94,39 @@
     ],
     "cleanUrls": true,
     "trailingSlash": false
-  },
+    },
+    {
+      "target": "health",
+      "public": "health/dist",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "cleanUrls": true,
+      "trailingSlash": false,
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=0, must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "**/*.@(js|css|eot|otf|ttf|ttc|woff|woff2)",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public, max-age=31536000, immutable"
+            }
+          ]
+        }
+      ]
+    }
+  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
