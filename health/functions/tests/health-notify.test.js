@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { newKeys, renderEmail, subjectFor, hasAlertableFinding, notifyIfNew } = require("../lib/health/notify");
+const { newKeys, renderEmail, subjectFor, hasAlertableFinding, notifyIfNew } = require("../lib/notify");
 
 function finding(key, overrides) {
   return { key, level: "warn", kind: "spike", text: `${key} happened`, ...overrides };

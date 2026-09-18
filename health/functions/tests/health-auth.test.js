@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { apiGet } = require("../lib/health/auth");
+const { apiGet } = require("../lib/auth");
 
 function jsonResponse(status, body) {
   return {

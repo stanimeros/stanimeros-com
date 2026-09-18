@@ -1,8 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { analyzeProject, worstLevel, median, formatValue, findingKey } = require("../lib/health/analyze");
-const { DEFAULTS, LEVEL_ORDER, LEVEL_BY_KIND } = require("../lib/health/config");
+const { analyzeProject, worstLevel, median, formatValue, findingKey } = require("../lib/analyze");
+const { DEFAULTS, LEVEL_ORDER, LEVEL_BY_KIND } = require("../lib/config");
 
 function cfg(overrides) {
   return { ...DEFAULTS, ...overrides };

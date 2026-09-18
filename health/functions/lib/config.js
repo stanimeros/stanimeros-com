@@ -8,22 +8,27 @@
 // tool's project list is a blind spot that looks like good news. Adding a
 // project here and re-running scripts/health-iam.sh are the two onboarding steps.
 
+// `crashlyticsApps` (default []) is per project: [{ dataset, table }] pointing
+// at that project's Crashlytics BigQuery export, once one exists -- see
+// crashlytics.js's module doc. Empty means "not wired up yet", not "no
+// crashes": collectCrashlytics skips the query entirely rather than reading
+// that as a clean project.
 const PROJECTS = [
-  { id: "applytics-app",         name: "Statwise",             plan: "Blaze" },
-  { id: "athens-mytransfer",     name: "Athens MyTransfer",    plan: "Blaze" },
-  { id: "chronal",               name: "Chronal",              plan: "Blaze" },
-  { id: "deskdrop-330f6",        name: "Irisdrop",             plan: "Spark" },
-  { id: "hedeos-f6e6c",          name: "Hedeos",               plan: "Spark" },
-  { id: "mp-transfer",           name: "ATPro Partner",        plan: "Blaze" },
-  { id: "niki-margariti-agent",  name: "Niki Margariti Labs",  plan: "Blaze" },
-  { id: "nourea",                name: "Nourea",               plan: "Blaze" },
-  { id: "parcels-ecdc6",         name: "Trans Hellas",         plan: "Blaze" },
-  { id: "party-game-stanimeros", name: "Party",                plan: "Blaze" },
-  { id: "poudra-c2e70",          name: "Ski Greece",           plan: "Blaze" },
-  { id: "process-a7a0f",         name: "Process",              plan: "Spark" },
-  { id: "stanimeros-dev",        name: "Stanimeros Dev",       plan: "Blaze" },
-  { id: "tattoo-healer",         name: "Tattoo Healer",        plan: "Blaze" },
-  { id: "veridictum",            name: "Veridictum",           plan: "Spark" },
+  { id: "applytics-app",         name: "Statwise",             plan: "Blaze", crashlyticsApps: [] },
+  { id: "athens-mytransfer",     name: "Athens MyTransfer",    plan: "Blaze", crashlyticsApps: [] },
+  { id: "chronal",               name: "Chronal",              plan: "Blaze", crashlyticsApps: [] },
+  { id: "deskdrop-330f6",        name: "Irisdrop",             plan: "Spark", crashlyticsApps: [] },
+  { id: "hedeos-f6e6c",          name: "Hedeos",               plan: "Spark", crashlyticsApps: [] },
+  { id: "mp-transfer",           name: "ATPro Partner",        plan: "Blaze", crashlyticsApps: [] },
+  { id: "niki-margariti-agent",  name: "Niki Margariti Labs",  plan: "Blaze", crashlyticsApps: [] },
+  { id: "nourea",                name: "Nourea",               plan: "Blaze", crashlyticsApps: [] },
+  { id: "parcels-ecdc6",         name: "Trans Hellas",         plan: "Blaze", crashlyticsApps: [] },
+  { id: "party-game-stanimeros", name: "Party",                plan: "Blaze", crashlyticsApps: [] },
+  { id: "poudra-c2e70",          name: "Ski Greece",           plan: "Blaze", crashlyticsApps: [] },
+  { id: "process-a7a0f",         name: "Process",              plan: "Spark", crashlyticsApps: [] },
+  { id: "stanimeros-dev",        name: "Stanimeros Dev",       plan: "Blaze", crashlyticsApps: [] },
+  { id: "tattoo-healer",         name: "Tattoo Healer",        plan: "Blaze", crashlyticsApps: [] },
+  { id: "veridictum",            name: "Veridictum",           plan: "Spark", crashlyticsApps: [] },
 ];
 
 const BILLING_ACCOUNT = "01F891-9E8314-AAB92D";
@@ -117,6 +122,20 @@ const DEFAULTS = {
   // cleared, deleted and recreated fresh if it comes back), so 48h of
   // padding against a missed run is no longer the safety net it used to be.
   logHours: 24,
+  // Client-side errors (browser/app, via reportClientError) are noisier than
+  // the estate's own backend logs -- ad blockers, extensions, dead visitor
+  // connections all throw -- so unlike analyzeLog's server errors (any real
+  // ERROR line is a finding, no floor), a signature needs real volume before
+  // it is worth a row.
+  clientErrorFloor: 5,
+  clientErrorCriticalFloor: 100,
+  // Crashlytics: any distinct fatal-crash signature earns at least a `warn`
+  // (crashFloor -- effectively always true once the export exists, kept as a
+  // knob rather than hard-coded 0 for symmetry with the other *Floor keys);
+  // crashCriticalFloor is where one signature's volume in the window
+  // escalates it to `critical`.
+  crashFloor: 1,
+  crashCriticalFloor: 50,
 };
 
 // Project-level roles that turn a leaked service-account key into full

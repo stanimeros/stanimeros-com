@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { parseUserManagedKeys, parseBroadBindings, parseUnrestrictedKeys } = require("../lib/health/iam");
+const { parseUserManagedKeys, parseBroadBindings, parseUnrestrictedKeys } = require("../lib/iam");
 
 test("parseUserManagedKeys reads name and validAfterTime off each key", () => {
   const keys = parseUserManagedKeys({

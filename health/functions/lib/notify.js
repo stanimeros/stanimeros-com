@@ -5,7 +5,7 @@
 // the same spike 21 times a week, and the alerts would stop being read. An
 // ongoing problem stays visible on the dashboard, silently.
 
-const { sendOwnerEmail, escapeHtml } = require("../mailer");
+const { sendOwnerEmail, escapeHtml } = require("./mailer");
 const { formatAthens } = require("./config");
 
 const LEVEL_COLOR = { critical: "#b91c1c", warn: "#b45309", low: "#6b7280" };

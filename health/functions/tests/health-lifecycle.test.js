@@ -6,7 +6,7 @@ const {
   docIdFor,
   DEPLOY_HISTORY_CAP,
   advanceDeployHistory,
-} = require("../lib/health/lifecycle");
+} = require("../lib/lifecycle");
 
 const NOW = new Date("2026-09-16T12:00:00Z");
 

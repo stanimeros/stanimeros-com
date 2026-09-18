@@ -18,8 +18,8 @@
 // Not deployed — see firebase.json functions.ignore.
 
 require("dotenv").config({ quiet: true });
-const { buildReport } = require("../lib/health");
-const { PROJECTS } = require("../lib/health/config");
+const { buildReport } = require("../lib");
+const { PROJECTS } = require("../lib/config");
 
 function parseArgs(argv) {
   const json = argv.includes("--json");

@@ -1,0 +1,32 @@
+{
+  "name": "health-functions",
+  "description": "Cloud Functions for the health dashboard (codebase: health)",
+  "scripts": {
+    "serve": "firebase emulators:start --only functions",
+    "shell": "firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "firebase deploy --only functions:health",
+    "logs": "firebase functions:log",
+    "test": "node --test \"tests/*.test.js\"",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^7.4.0",
+    "nodemailer": "^10.0.10"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "firebase-functions-test": "^3.1.0",
+    "globals": "^16.5.0",
+    "typescript": "~5.8.3"
+  },
+  "private": true
+}

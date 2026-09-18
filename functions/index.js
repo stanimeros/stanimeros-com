@@ -1,12 +1,11 @@
 const { setGlobalOptions } = require("firebase-functions");
-const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onCall } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 
 const { sendOwnerEmail, escapeHtml } = require("./lib/mailer");
 const { ai, tools, buildSystemInstruction, MODEL } = require("./lib/gemini");
 const { checkAvailability, createBooking } = require("./lib/calendar");
-const { runHealthCheck, buildReport } = require("./lib/health");
 const {
   appendMessage,
   getHistory,
@@ -242,79 +241,11 @@ exports.agentReport = onSchedule(
   }
 );
 
-// --------------------------------------------------------------------------
-// System health checker — see lib/health/health-schema.md
-// --------------------------------------------------------------------------
-
-// Only this UID may read health data. Kept server-side rather than in
-// firestore.rules so the ruleset stays deny-all with no exception, and the
-// allowlist itself is never shipped to the browser.
-const HEALTH_UIDS = (process.env.HEALTH_ALLOWED_UIDS || "")
-  .split(",")
-  .map((uid) => uid.trim())
-  .filter(Boolean);
-
-function assertHealthAccess(request) {
-  const uid = request.auth && request.auth.uid;
-  if (!uid) throw new HttpsError("unauthenticated", "Sign in first.");
-  if (!HEALTH_UIDS.includes(uid)) throw new HttpsError("permission-denied", "Not allowed.");
-  return uid;
-}
-
-// Runs as health-checker@stanimeros-dev, which holds monitoring.viewer +
-// logging.viewer across the estate. Retries are off on purpose: a retried run
-// would re-send the alert mail. maxInstances 1 keeps two sweeps from racing to
-// write the same state document.
-const HEALTH_OPTIONS = {
-  serviceAccount: "health-checker@stanimeros-dev.iam.gserviceaccount.com",
-  timeoutSeconds: 540,
-  memory: /** @type {import("firebase-functions/v2/options").MemoryOption} */ ("512MiB"),
-  maxInstances: 1,
-};
-
-// Three times through the working day (8am/1pm/6pm Athens), not once a
-// day and not overnight: the baseline every metric/entity check compares
-// against is a multi-day median (cfg.baselineDays, see monitoring.js
-// windowFor) that only moves day to day, so a same-day rerun wouldn't
-// change what a spike or stall check is scored against. But the
-// rolling-24h "now" window those same checks (including the failure-rate
-// check inside analyze.js analyzeMetric / analyzeEntities) are scored
-// from, and the log scan's rolling logHours (24h, see config.js) window,
-// both shift with every run -- so three sweeps a day catch a live
-// incident well before a 24h-old one would age out unseen, without paging
-// anyone with a 3am-generated alert. "Run now" on the dashboard still
-// covers anything more urgent than a 6h cadence, or anything overnight.
-// 8am Athens is the anchor: it gives the UTC day (ends 00:00 UTC = 03:00
-// Athens) time to settle in Monitoring before the first sweep reads it.
-exports.healthCheck = onSchedule(
-  {
-    ...HEALTH_OPTIONS,
-    schedule: "0 8,13,18 * * *",
-    timeZone: "Europe/Athens",
-    retryCount: 0,
-  },
-  async () => {
-    const summary = await runHealthCheck({ mode: "scheduled" });
-    logger.info("Health sweep complete", summary);
-  }
-);
-
-// On-demand run from the dashboard.
-exports.runHealthCheckNow = onCall(
-  { ...HEALTH_OPTIONS, enforceAppCheck: true },
-  async (request) => {
-    assertHealthAccess(request);
-    return runHealthCheck({ mode: "manual" });
-  }
-);
-
-// getHealthReport, getHealthFindings, ackFinding, markHealthSeen and
-// getHealthSeen used to live here as callables. firestore.rules now gates
-// health_reports/health_findings/health_seen directly on request.auth.uid
-// (the single admin account), so the dashboard reads/writes Firestore
-// straight from the client (src/lib/firebase.ts) instead.
+// System health checker (healthCheck, runHealthCheckNow, reportClientError)
+// moved to health/functions -- a separate Cloud Functions codebase deployed
+// independently of this one. See health/functions/index.js.
 
 // Pure helpers, exported for unit testing only — not part of the deployed
 // function surface (Firebase only deploys the `exports.<name>` onCall/onSchedule
 // entries above).
-exports._internal = { formatTranscript, toGeminiContents, runTool, assertHealthAccess, buildReport };
+exports._internal = { formatTranscript, toGeminiContents, runTool };

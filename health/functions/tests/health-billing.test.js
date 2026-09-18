@@ -6,7 +6,7 @@ const {
   buildQuery,
   buildLatestDayQuery,
   buildTotalQuery,
-} = require("../lib/health/billing");
+} = require("../lib/billing");
 
 const TABLE = { datasetProject: "stanimeros-dev", datasetId: "billing_export", tableId: "t" };
 

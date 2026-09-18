@@ -10,8 +10,8 @@ const {
   SELF_AUDIT_TYPES,
   isSelfAuditDenial,
   NO_MESSAGE,
-} = require("../lib/health/logging");
-const { LEVEL_BY_KIND } = require("../lib/health/config");
+} = require("../lib/logging");
+const { LEVEL_BY_KIND } = require("../lib/config");
 
 test("signature collapses a UUID, a hex address, and a long number so repeated errors of the same shape produce one signature", () => {
   const a = {

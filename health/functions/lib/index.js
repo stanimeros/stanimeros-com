@@ -14,6 +14,8 @@ const { readErrors } = require("./logging");
 const { fetchCosts, fetchOtherCost, fetchBillingTotal, fetchCostDataThrough } = require("./billing");
 const { collectIam } = require("./iam");
 const { collectDeploys } = require("./deploys");
+const { readClientErrors } = require("./clientErrors");
+const { collectCrashlytics } = require("./crashlytics");
 const { analyzeProject, worstLevel } = require("./analyze");
 const { notifyIfNew } = require("./notify");
 const { updateLifecycle } = require("./lifecycle");
@@ -104,7 +106,13 @@ async function collect(project, token, cfg) {
   // single call, and lifecycle.js for why a deploy never resolves a finding.
   const deploys = await collectDeploys(project.id, token);
 
-  return { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam, deploys };
+  // Crashlytics: additive, degrades internally per-project (see
+  // crashlytics.js) -- a project with no export configured (crashlyticsApps:
+  // [], the default for all of them today) costs this call nothing but a map
+  // lookup, no network round trip.
+  const crashlytics = await collectCrashlytics(project.id, project.crashlyticsApps, cfg.logHours, token);
+
+  return { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam, deploys, crashlytics };
 }
 
 async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
@@ -140,15 +148,17 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
     costDataThrough == null ||
     Date.now() - new Date(`${costDataThrough}T00:00:00Z`).getTime() > COST_STALE_AFTER_DAYS * 86400000;
 
+  // One read for the whole estate, same shape billing's cost fetch above
+  // takes -- every project's client errors land in this project's own Cloud
+  // Logging (see clientErrors.js), so there is no per-project call to make.
+  const clientErrorsByProject = await readClientErrors(cfg.logHours, token, ids);
+
   const projectErrors = [];
   const results = await mapWithLimit(projects, CONCURRENCY, async (project) => {
     const projectCfg = thresholdsFor(project.id);
     try {
-      const { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam, deploys } = await collect(
-        project,
-        token,
-        projectCfg
-      );
+      const { metricData, rollingMetricData, breakdowns, rollingBreakdowns, log, iam, deploys, crashlytics } =
+        await collect(project, token, projectCfg);
       return analyzeProject({
         project,
         metricSpecs: METRICS,
@@ -162,6 +172,8 @@ async function buildReport({ mode = "scheduled", projects = PROJECTS } = {}) {
         billingAccount: BILLING_ACCOUNT,
         iam,
         deploys,
+        clientErrors: clientErrorsByProject[project.id],
+        crashlytics,
       });
     } catch (err) {
       projectErrors.push({
@@ -251,7 +263,9 @@ async function runHealthCheck({ mode = "scheduled" } = {}) {
 
   const { sent, keys } = await notifyIfNew(report, previous.findingKeys, {
     to: process.env.HEALTH_EMAIL_TO,
-    dashboardUrl: "https://stanimeros.com/health",
+    // stanimeros-health.web.app until DNS for health.stanimeros.com is
+    // pointed at the new Hosting site -- update once that's live.
+    dashboardUrl: "https://stanimeros-health.web.app",
     ackedKeys,
     alerting,
   });

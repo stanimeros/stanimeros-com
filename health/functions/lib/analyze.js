@@ -309,6 +309,51 @@ function daysSince(iso) {
   return (Date.now() - new Date(iso).getTime()) / 86400000;
 }
 
+// --- client-side (browser/app) error findings ------------------------------
+
+// One finding per distinct signature, same reasoning as analyzeLog's rollup:
+// the table exists to show what actually broke, not a single "N client
+// errors" count. Unlike server errors (any real ERROR line is a finding, no
+// floor), client-side noise is expected -- ad blockers, extensions, dead
+// visitor connections -- so a signature needs real volume in the window
+// before it earns a row (cfg.clientErrorFloor).
+function analyzeClientErrors(projectId, clientErrors, cfg, findings) {
+  if (!clientErrors) return;
+  for (const top of clientErrors.top || []) {
+    if (top.count < cfg.clientErrorFloor) continue;
+    findings.push({
+      key: findingKey(projectId, "client-error", top.message),
+      level: top.count >= cfg.clientErrorCriticalFloor ? "critical" : "warn",
+      kind: "client-error",
+      text: top.message,
+      count: top.count,
+      ...(top.lastOccurred ? { lastOccurred: top.lastOccurred } : {}),
+    });
+  }
+}
+
+// --- Crashlytics findings ---------------------------------------------------
+
+// `crashlytics.configured` false means the project has no BigQuery export
+// wired up yet (crashlyticsApps: [] in config.js, true for every project as
+// of writing) -- silently skip rather than report "0 crashes", the same
+// "not checked" vs. "checked, clean" distinction billing.js's cost:null
+// draws. `count: null` (configured, but every table read failed this run --
+// see crashlytics.js) gets the same treatment: nothing to grade yet.
+function analyzeCrashlytics(projectId, crashlytics, cfg, findings) {
+  if (!crashlytics || !crashlytics.configured || crashlytics.count == null) return;
+  for (const issue of crashlytics.issues || []) {
+    if (issue.events < cfg.crashFloor) continue;
+    findings.push({
+      key: findingKey(projectId, "crash", issue.issueId),
+      level: issue.events >= cfg.crashCriticalFloor ? "critical" : "warn",
+      kind: "crash",
+      text: `${issue.title || issue.issueId}: ${formatValue(issue.events)} crashes in the last 24h`,
+      count: issue.events,
+    });
+  }
+}
+
 function analyzeIam(projectId, iam, cfg, findings) {
   if (!iam) return;
 
@@ -453,6 +498,8 @@ function analyzeProject({
   billingAccount,
   iam,
   deploys,
+  clientErrors,
+  crashlytics,
 }) {
   const findings = [];
   const metrics = {};
@@ -493,6 +540,8 @@ function analyzeProject({
 
   analyzeLog(project.id, log, cfg.logHours, cfg, findings);
   analyzeIam(project.id, iam, cfg, findings);
+  analyzeClientErrors(project.id, clientErrors, cfg, findings);
+  analyzeCrashlytics(project.id, crashlytics, cfg, findings);
 
   // Attach the log's per-source error count to the entity it belongs to.
   for (const entity of entities) {
@@ -530,6 +579,8 @@ function analyzeProject({
 module.exports = {
   analyzeProject,
   analyzeIam,
+  analyzeClientErrors,
+  analyzeCrashlytics,
   median,
   formatValue,
   findingKey,

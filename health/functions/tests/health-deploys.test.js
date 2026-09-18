@@ -23,7 +23,7 @@ function jsonResponse(status, body) {
 
 let collectDeploys;
 test.before(() => {
-  ({ collectDeploys } = require("../lib/health/deploys"));
+  ({ collectDeploys } = require("../lib/deploys"));
 });
 
 test("collectDeploys maps each Cloud Run service to its updateTime, lowercased by name", async () => {
