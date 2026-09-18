@@ -105,7 +105,11 @@ const {
       </div>
     </div>
     <script>
-      import "@/lib/reportClientError"
+      import { initHealthReporting } from "@/lib/reportClientError"
+      initHealthReporting({
+        project: "stanimeros-dev",
+        token: import.meta.env.PUBLIC_HEALTH_CLIENT_TOKEN,
+      })
     </script>
   </body>
 </html>
