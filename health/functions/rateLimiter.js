@@ -10,8 +10,9 @@
  * onCall functions like `runHealthCheckNow`, where a Firestore transaction
  * per call is negligible and cross-instance accuracy matters more.
  *
- * One-time setup: add a Firestore TTL policy on the `_rateLimits` collection's
- * `expiresAt` field so old counter docs get garbage-collected.
+ * No TTL/cleanup needed: each (function, identity, tier) gets exactly one
+ * doc, keyed WITHOUT the current window index — its `windowStart` is a field,
+ * reset in place each call, so the collection never grows unbounded.
  */
 
 const admin = require("firebase-admin");
@@ -47,7 +48,7 @@ async function enforceRateLimit(request, fnName) {
   const now = Date.now();
   const entries = limitTiers.map((tier) => {
     const windowStart = Math.floor(now / 1000 / tier.windowSeconds);
-    const docId = `${fnName}_${identity}_${tier.windowSeconds}_${windowStart}`;
+    const docId = `${fnName}_${identity}_${tier.windowSeconds}`;
     return { tier, windowStart, ref: db.collection("_rateLimits").doc(docId) };
   });
 
@@ -55,8 +56,9 @@ async function enforceRateLimit(request, fnName) {
     const snaps = await Promise.all(entries.map((e) => tx.get(e.ref)));
 
     snaps.forEach((snap, i) => {
-      const { tier } = entries[i];
-      const count = snap.exists ? snap.data().count : 0;
+      const { tier, windowStart } = entries[i];
+      const data = snap.exists ? snap.data() : null;
+      const count = data && data.windowStart === windowStart ? data.count : 0;
       if (count >= tier.maxCalls) {
         throw new HttpsError(
             "resource-exhausted",
@@ -66,14 +68,10 @@ async function enforceRateLimit(request, fnName) {
     });
 
     snaps.forEach((snap, i) => {
-      const { tier, windowStart, ref } = entries[i];
-      const count = snap.exists ? snap.data().count : 0;
-      tx.set(ref, {
-        count: count + 1,
-        expiresAt: admin.firestore.Timestamp.fromMillis(
-            (windowStart + 1) * tier.windowSeconds * 1000,
-        ),
-      }, { merge: true });
+      const { windowStart, ref } = entries[i];
+      const data = snap.exists ? snap.data() : null;
+      const count = data && data.windowStart === windowStart ? data.count : 0;
+      tx.set(ref, { windowStart, count: count + 1 });
     });
   });
 }
