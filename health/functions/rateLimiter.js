@@ -18,6 +18,23 @@
 const admin = require("firebase-admin");
 const { HttpsError } = require("firebase-functions/v2/https");
 
+/**
+ * Real client IP for an unauthenticated caller. Reads `x-forwarded-for`
+ * directly instead of Express's `request.rawRequest.ip`, which only reflects
+ * the real client when `app.set("trust proxy", ...)` is configured (most
+ * Cloud Functions v2 apps never set this). Cloud Functions v2/Cloud Run sits
+ * behind Google's front-end proxy, which always overwrites this header with
+ * the real client IP as its first entry before the request reaches the
+ * function, so it can't be spoofed by the caller.
+ */
+function clientIp(request) {
+  const xff = request.rawRequest?.headers?.["x-forwarded-for"];
+  if (typeof xff === "string" && xff.trim()) {
+    return xff.split(",")[0].trim();
+  }
+  return request.rawRequest?.ip;
+}
+
 /** 1-minute/1-hour/24-hour tiers, hourly ~10x and daily ~50x the per-minute cap. */
 function tiers(perMinute, overrides = {}) {
   return [
@@ -42,7 +59,7 @@ const DEFAULT_LIMIT = tiers(30);
 async function enforceRateLimit(request, fnName) {
   const limitTiers = LIMITS[fnName] || DEFAULT_LIMIT;
   const identity =
-    request.auth?.uid || request.rawRequest?.ip || "anonymous";
+    request.auth?.uid || clientIp(request) || "anonymous";
 
   const db = admin.firestore();
   const now = Date.now();

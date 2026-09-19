@@ -57,7 +57,10 @@ const HEALTH_OPTIONS = {
 exports.healthCheck = onSchedule(
   {
     ...HEALTH_OPTIONS,
-    schedule: "0 8,13,18 * * *",
+    // TEMP: every 15 min, 8am-6pm Athens, through 2026-09-22 for closer
+    // monitoring. Revert to the normal 3x/day cadence after that date:
+    //   schedule: "0 8,13,18 * * *",
+    schedule: "*/15 8-18 * * *",
     timeZone: "Europe/Athens",
     retryCount: 0,
   },
