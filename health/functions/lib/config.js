@@ -24,6 +24,7 @@ const PROJECTS = [
   { id: "nourea",                name: "Nourea",               plan: "Blaze", crashlyticsApps: [] },
   { id: "parcels-ecdc6",         name: "Trans Hellas",         plan: "Blaze", crashlyticsApps: [] },
   { id: "party-game-stanimeros", name: "Party",                plan: "Blaze", crashlyticsApps: [] },
+  { id: "postly-stanimeros",     name: "Postly",               plan: "Blaze", crashlyticsApps: [] },
   { id: "poudra-c2e70",          name: "Ski Greece",           plan: "Blaze", crashlyticsApps: [] },
   { id: "process-a7a0f",         name: "Process",              plan: "Spark", crashlyticsApps: [] },
   { id: "stanimeros-dev",        name: "Stanimeros Dev",       plan: "Blaze", crashlyticsApps: [] },

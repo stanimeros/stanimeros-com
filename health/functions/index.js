@@ -140,6 +140,8 @@ const ALLOWED_ORIGINS = [
   "https://hedeos-f6e6c.web.app",
   "https://ski-greece.gr",
   "https://poudra-c2e70.web.app",
+  "https://postly-stanimeros.web.app",
+  "https://postly-stanimeros.firebaseapp.com",
 ];
 
 // Hard caps on what a single report can cost this function's own log volume
