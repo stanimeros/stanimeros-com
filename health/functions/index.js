@@ -6,6 +6,7 @@ const logger = require("firebase-functions/logger");
 const { runHealthCheck, buildReport } = require("./lib");
 const { PROJECTS, thresholdsFor } = require("./lib/config");
 const { makeLimiter, allow: withinRateLimit } = require("./lib/rateLimit");
+const { enforceRateLimit } = require("./rateLimiter");
 
 setGlobalOptions({ maxInstances: 10, region: "europe-west1" });
 
@@ -71,6 +72,7 @@ exports.runHealthCheckNow = onCall(
   { ...HEALTH_OPTIONS, enforceAppCheck: true },
   async (request) => {
     assertHealthAccess(request);
+    await enforceRateLimit(request, "runHealthCheckNow");
     return runHealthCheck({ mode: "manual" });
   }
 );

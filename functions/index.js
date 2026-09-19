@@ -13,6 +13,7 @@ const {
   markReported,
   getSessionsToReport,
 } = require("./lib/firestoreChat");
+const { enforceRateLimit } = require("./rateLimiter");
 
 setGlobalOptions({ maxInstances: 10, region: "europe-west1" });
 
@@ -24,6 +25,7 @@ const MAX_MESSAGE_LENGTH = 2000;
 
 // Form submission (contact form / package inquiries).
 exports.sendEmail = onCall({ enforceAppCheck: true }, async (request) => {
+  await enforceRateLimit(request, "sendEmail");
   try {
     const { name, email, message, subject } = request.data;
 
@@ -135,6 +137,7 @@ async function runTool(call, deps = { checkAvailability, createBooking }, chatSu
 // Chat agent. One call = one visitor message in, one agent reply out;
 // full history lives in Firestore, keyed by the session id the client generated.
 exports.geminiChat = onCall({ enforceAppCheck: true }, async (request) => {
+  await enforceRateLimit(request, "geminiChat");
   const { sessionId, message } = request.data;
 
   if (!sessionId || typeof sessionId !== "string") {
